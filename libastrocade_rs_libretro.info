@@ -1,0 +1,9 @@
+# astrocade-rs-libretro core info file
+display_name = "Astrocade RS Libretro"
+categories = "Other"
+authors = "David Brinovec"
+corename = "astrocade-rs-libretro"
+supported_extensions = ""
+license = "AGPLv3"
+display_version = "0.1.0"
+supports_no_game = "true"

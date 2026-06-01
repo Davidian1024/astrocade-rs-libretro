@@ -1,0 +1,43 @@
+pub const RETRO_PIXEL_FORMAT_XRGB8888: u32 = 1;
+
+pub const RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: u32 = 10;
+
+pub const RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: u32 = 18;
+
+#[repr(C)]
+pub struct RetroSystemInfo {
+    pub library_name: *const std::ffi::c_char,
+    pub library_version: *const std::ffi::c_char,
+    pub valid_extensions: *const std::ffi::c_char,
+    pub need_fullpath: bool,
+    pub block_extract: bool,
+}
+
+#[repr(C)]
+pub struct RetroGameGeometry {
+    pub base_width: u32,
+    pub base_height: u32,
+    pub max_width: u32,
+    pub max_height: u32,
+    pub aspect_ratio: f32,
+}
+
+#[repr(C)]
+pub struct RetroSystemTiming {
+    pub fps: f64,
+    pub sample_rate: f64,
+}
+
+#[repr(C)]
+pub struct RetroSystemAvInfo {
+    pub geometry: RetroGameGeometry,
+    pub timing: RetroSystemTiming,
+}
+
+#[repr(C)]
+pub struct RetroGameInfo {
+    pub path: *const std::ffi::c_char,
+    pub data: *const std::ffi::c_void,
+    pub size: usize,
+    pub meta: *const std::ffi::c_char,
+}
