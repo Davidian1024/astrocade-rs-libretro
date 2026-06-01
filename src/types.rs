@@ -1,5 +1,9 @@
 pub const RETRO_PIXEL_FORMAT_XRGB8888: u32 = 1;
 
+pub const RETRO_ENVIRONMENT_SET_MESSAGE: u32 = 6;
+
+pub const RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: u32 = 9;
+
 pub const RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: u32 = 10;
 
 pub const RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: u32 = 18;
@@ -40,4 +44,10 @@ pub struct RetroGameInfo {
     pub data: *const std::ffi::c_void,
     pub size: usize,
     pub meta: *const std::ffi::c_char,
+}
+
+#[repr(C)]
+pub struct RetroMessage {
+    pub msg: *const std::ffi::c_char,
+    pub frames: u32,
 }

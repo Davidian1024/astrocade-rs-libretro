@@ -2,7 +2,7 @@ use z80::Z80;
 use crate::machine::IO;
 
 use crate::machine::Machine;
-
+use crate::machine::video;
 
 pub enum Waveform {
     Square,
@@ -21,8 +21,19 @@ pub struct AstrocadeCore {
 
 impl AstrocadeCore {
     pub fn new() -> Self {
-        let io = IO { mem: [0u8; 65536] };
-        let machine = Machine { z80: Z80::<IO>::new(io) };
+        let io = IO {
+            mem: [0u8; 65536],
+            colors: [0; 8],
+            horcb: 0,
+            verbl: 0,
+            magic: 0,
+            xpand: 0,
+        };
+        let machine = Machine {
+            z80: Z80::<IO>::new(io),
+            palette: video::build_palette(),
+            frame_buffer: vec![0u32; 160 * 102],
+        };
         AstrocadeCore {
             frame_count: 0,
             phase: 0.0,

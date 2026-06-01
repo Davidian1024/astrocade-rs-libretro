@@ -26,3 +26,5 @@ pub static mut AUDIO_SAMPLE_BATCH_CALLBACK: Option<
 pub static mut INPUT_POLL_CALLBACK: Option<unsafe extern "C" fn()> = None;
 
 pub static mut INPUT_STATE_CALLBACK: Option<unsafe extern "C" fn(u32, u32, u32, u32) -> i16> = None;
+
+pub static SYSTEM_DIRECTORY: Mutex<Option<String>> = Mutex::new(None);
