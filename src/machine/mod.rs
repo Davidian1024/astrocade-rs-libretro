@@ -21,12 +21,28 @@ pub struct IO {
     pub infbk: u8,
     // interrupt line, port $0F
     pub inlin: u8,
+
+    // Magic memory function generator state
+    pub funcgen_expand_count: u8,      // flip-flop for expand mode
+    pub funcgen_shift_prev_data: u8,   // previous byte for shift spillover
+    pub funcgen_rotate_count: u8,      // counter for rotate mode
+    pub funcgen_rotate_data: [u8; 4],  // accumulated data for rotate
+    pub funcgen_expand_color: [u8; 2], // colors from xpand register
 }
 
 impl Z80_io for IO {
-    fn read_byte(&self, addr: u16) -> u8 { self.mem[addr as usize] }
+    fn read_byte(&self, addr: u16) -> u8 {
+        self.mem[addr as usize]
+    }
 
-    fn write_byte(&mut self, addr: u16, value: u8) { self.mem[addr as usize] = value }
+    fn write_byte(&mut self, addr: u16, value: u8) {
+        let addr = addr as usize;
+        if addr < 0x4000 {
+            self.funcgen_write(addr, value);
+        } else {
+            self.mem[addr] = value;
+        }
+    }
 
     fn port_out(&mut self, addr: u16, value: u8) {
         match addr as u8 {
@@ -34,15 +50,24 @@ impl Z80_io for IO {
             0x09 => self.horcb = value,
             0x0A => self.verbl = value,
             0x0B => {
-                eprintln!("COLBX write: addr={:#06x} value={:#04x}", addr, value);
+                // eprintln!("COLBX write: addr={:#06x} value={:#04x}", addr, value);
                 let reg = ((addr >> 8) & 0x07) as usize;
                 self.colors[reg] = value;
-            },
-            0x0C => self.magic = value,
+            }
+            0x0C => {
+                self.magic = value;
+                self.funcgen_expand_count = 0;
+                self.funcgen_rotate_count = 0;
+                self.funcgen_shift_prev_data = 0;
+            }
             0x0D => self.infbk = value,
-            0x0E => self.inlin = value,   // was inmod
-            0x0F => self.inmod = value,   // was inlin
-            0x19 => self.xpand = value,
+            0x0E => self.inlin = value, // was inmod
+            0x0F => self.inmod = value, // was inlin
+            0x19 => {
+                self.xpand = value;
+                self.funcgen_expand_color[0] = value & 0x03;
+                self.funcgen_expand_color[1] = (value >> 2) & 0x03;
+            }
             _ => {}
         }
     }
@@ -50,6 +75,69 @@ impl Z80_io for IO {
     fn port_in(&self, _addr: u16) -> u8 {
         // controllers and keyboard — stub for now
         0xFF
+    }
+}
+
+impl IO {
+    fn funcgen_write(&mut self, offset: usize, mut data: u8) {
+        let ctrl = self.magic;
+
+        // Expand (bit 3)
+        if ctrl & 0x08 != 0 {
+            self.funcgen_expand_count ^= 1;
+            data >>= 4 * self.funcgen_expand_count;
+            data = (self.funcgen_expand_color[((data >> 3) & 1) as usize] << 6)
+                | (self.funcgen_expand_color[((data >> 2) & 1) as usize] << 4)
+                | (self.funcgen_expand_color[((data >> 1) & 1) as usize] << 2)
+                | (self.funcgen_expand_color[((data >> 0) & 1) as usize] << 0);
+        }
+
+        let prev_data = self.funcgen_shift_prev_data;
+        self.funcgen_shift_prev_data = data;
+
+        // Rotate (bit 2) or Shift (bits 0-1)
+        if ctrl & 0x04 != 0 {
+            // Rotate — accumulate first 4 writes, output next 4
+            if self.funcgen_rotate_count & 4 == 0 {
+                self.funcgen_rotate_data[(self.funcgen_rotate_count & 3) as usize] = data;
+                self.funcgen_rotate_count += 1;
+                return; // don't write yet
+            } else {
+                let shift = 2 * ((!self.funcgen_rotate_count) & 3);
+                data = (((self.funcgen_rotate_data[3] >> shift) & 3) << 6)
+                    | (((self.funcgen_rotate_data[2] >> shift) & 3) << 4)
+                    | (((self.funcgen_rotate_data[1] >> shift) & 3) << 2)
+                    | (((self.funcgen_rotate_data[0] >> shift) & 3) << 0);
+                self.funcgen_rotate_count += 1;
+            }
+        } else {
+            // Shift
+            let shift = 2 * (ctrl & 0x03);
+            if shift == 0 {
+                // no shift, data unchanged
+            } else {
+                data = (data >> shift) | (prev_data << (8 - shift));
+            }
+        }
+
+        // Flop (bit 6) — reverse pixel order
+        if ctrl & 0x40 != 0 {
+            data = (data >> 6) | ((data >> 2) & 0x0c) | ((data << 2) & 0x30) | (data << 6);
+        }
+
+        // OR / XOR (bits 4/5)
+        let fb_addr = 0x4000 + offset;
+        if ctrl & 0x30 != 0 {
+            let old_data = self.mem[fb_addr];
+            if ctrl & 0x10 != 0 {
+                data |= old_data; // OR
+            } else if ctrl & 0x20 != 0 {
+                data ^= old_data; // XOR
+            }
+        }
+
+        // Write result to framebuffer
+        self.mem[fb_addr] = data;
     }
 }
 

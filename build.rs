@@ -1,10 +1,8 @@
-use vergen::{Emitter, BuildBuilder};
+use vergen::{BuildBuilder, Emitter};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-let build = BuildBuilder::all_build()?;
+    let build = BuildBuilder::all_build()?;
 
-Emitter::default()
-    .add_instructions(&build)?
-    .emit()?;       
+    Emitter::default().add_instructions(&build)?.emit()?;
     Ok(())
 }

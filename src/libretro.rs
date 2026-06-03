@@ -1,4 +1,3 @@
-
 use crate::{core::AstrocadeCore, types::RetroSystemInfo};
 
 #[unsafe(no_mangle)]
@@ -12,8 +11,15 @@ pub extern "C" fn retro_api_version() -> u32 {
 pub extern "C" fn retro_get_system_info(info: *mut RetroSystemInfo) {
     eprintln!("retro_get_system_info(): started");
     unsafe {
-        (*info).library_name = concat!(env!("CARGO_PKG_NAME"), "\0").as_ptr() as *const std::ffi::c_char;
-        (*info).library_version = concat!(env!("CARGO_PKG_VERSION"), "-", env!("VERGEN_BUILD_TIMESTAMP"), "\0").as_ptr() as *const std::ffi::c_char;
+        (*info).library_name =
+            concat!(env!("CARGO_PKG_NAME"), "\0").as_ptr() as *const std::ffi::c_char;
+        (*info).library_version = concat!(
+            env!("CARGO_PKG_VERSION"),
+            "-",
+            env!("VERGEN_BUILD_TIMESTAMP"),
+            "\0"
+        )
+        .as_ptr() as *const std::ffi::c_char;
         (*info).valid_extensions = c"".as_ptr();
         (*info).need_fullpath = false;
         (*info).block_extract = false;
@@ -149,13 +155,19 @@ pub extern "C" fn retro_load_game(_game: *const crate::types::RetroGameInfo) -> 
         Ok(data) => data,
         Err(e) => {
             let msg = format!("astrocade: BIOS not found.");
-            eprintln!("retro_load_game(): failed to load BIOS from {}: {}", bios_path, e);
+            eprintln!(
+                "retro_load_game(): failed to load BIOS from {}: {}",
+                bios_path, e
+            );
             set_message(&msg);
             return false;
         }
     };
     if bios_data.len() != 0x2000 {
-        eprintln!("retro_load_game(): BIOS is wrong size (expected 8192, got {})", bios_data.len());
+        eprintln!(
+            "retro_load_game(): BIOS is wrong size (expected 8192, got {})",
+            bios_data.len()
+        );
         return false;
     }
 
@@ -195,19 +207,21 @@ pub extern "C" fn retro_run() {
     );
 
     if let Some(cb) = unsafe { crate::VIDEO_REFRESH_CALLBACK } {
-        unsafe { cb(
-            core.machine.frame_buffer.as_ptr() as *const std::ffi::c_void,
-            160,
-            102,
-            160 * 4,
-        ) };
+        unsafe {
+            cb(
+                core.machine.frame_buffer.as_ptr() as *const std::ffi::c_void,
+                160,
+                102,
+                160 * 4,
+            )
+        };
     }
 
     // Audio
 
     let frames_per_frame = 48000 / 60;
     let total_samples = frames_per_frame * 2;
-    let audio_buffer: Vec<i16> = vec![0i16; total_samples ];
+    let audio_buffer: Vec<i16> = vec![0i16; total_samples];
 
     if let Some(cb) = unsafe { crate::AUDIO_SAMPLE_BATCH_CALLBACK } {
         unsafe { cb(audio_buffer.as_ptr(), frames_per_frame as usize) };
@@ -217,77 +231,102 @@ pub extern "C" fn retro_run() {
 
     // const CYCLES_PER_FRAME: u32 = 1;
     const CYCLES_PER_FRAME: u32 = 1_789_000 / 60;
+    const SCANLINE_CYCLES: u32 = CYCLES_PER_FRAME / 95;
 
-    for i in 0..CYCLES_PER_FRAME {
-        if i % 5000 == 0 {
-            eprintln!("step={} PC={:#06x} I={:#04x} inmod={:#04x}", 
-                core.step_count, 
+    let irq_cycle = 15000u32;
+
+    for frame_step in 0..CYCLES_PER_FRAME {
+        let pc = core.machine.z80.pc as usize;
+        let op = core.machine.z80.io.mem[pc];
+        if op == 0xFB && !core.irq_fired_this_frame {
+            // EI just executed (well, about to), fire IRQ after a short delay
+            // Use a counter to fire ~100 cycles after EI
+            core.irq_pending_cycles = 100;
+        }
+        if core.irq_pending_cycles > 0 {
+            core.irq_pending_cycles -= 1;
+            if core.irq_pending_cycles == 0 {
+                eprintln!(
+                    "step_count={:>10} frame_step={:>6} frame_count={:>6} iff1={} inlin={}; IRQ fired",
+                    core.step_count,
+                    frame_step,
+                    core.frame_count,
+                    core.machine.z80.iff1,
+                    core.machine.z80.io.inlin
+                );
+                core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
+                eprintln!(
+                    "mem[$0003..=$0007] after IRQ: {:02x?}",
+                    &core.machine.z80.io.mem[0x0003..=0x0007]
+                );
+                eprintln!(
+                    "mem[$0c61..=$0c70] after IRQ: {:02x?}",
+                    &core.machine.z80.io.mem[0x0c61..=0x0c70]
+                );
+                eprintln!("mem[$0c6a..=$0c80]: {:02x?}", &core.machine.z80.io.mem[0x0c6a..=0x0c80]);
+                core.irq_fired_this_frame = true;
+            }
+        }
+        if (op == 0xFB || op == 0xF3 || op == 0x76)  {
+            eprintln!(
+                "step_count={:>10} frame_step={:>6} frame_count={:>6} {} PC={:#06x} iff1={}",
+                core.step_count,
+                frame_step,
+                core.frame_count,
+                match op {
+                    0xFB => "EI",
+                    0xF3 => "DI",
+                    _ => "HALT",
+                },
                 core.machine.z80.pc,
-                core.machine.z80.i,
-                core.machine.z80.io.inmod,
+                core.machine.z80.iff1,
             );
         }
-
-        // let pc = core.machine.z80.pc as usize;
-        // let op = core.machine.z80.io.mem[pc];
-        // let next = core.machine.z80.io.mem[pc + 1];
-        // let is_interesting = matches!(op, 0xD3) // OUT (n), A
-        //     || (op == 0xED && matches!(next, 0x79 | 0xB3)); // OUT (C),A or OTIR
-
-        // if is_interesting {
-            // let instr = disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc);
-            // eprintln!(
-            //     "step={:>10} PC={:#06x} SP={:#06x} | {:<20} | verbl={:>3} horcb={:>3} colors={:?}",
-            //     core.step_count,
-            //     core.machine.z80.pc,
-            //     core.machine.z80.sp,
-            //     instr,
-            //     core.machine.z80.io.verbl,
-            //     core.machine.z80.io.horcb,
-            //     core.machine.z80.io.colors,
-            // );
-        // }
-        core.step_count += 1;
-
+        let next = if (pc as usize) + 1 < 0x10000 {
+            core.machine.z80.io.mem[pc as usize + 1]
+        } else {
+            0
+        };
+        let b2 = if pc + 2 < 0x10000 { core.machine.z80.io.mem[pc + 2] } else { 0 };
+        if op == 0xC3 && next == 0x00 && b2 == 0x00 {
+            eprintln!(
+                "step_count={:>10} frame_step={:>6} frame_count={:>6} JP $0000 PC={:#06x}",
+                core.step_count, frame_step, core.frame_count, core.machine.z80.pc
+            );
+        }
+        if core.frame_count >= 1 && core.frame_count < 3 {
+            if op == 0xDB // IN A, (n)
+            || (op == 0xED && (next == 0x78 || next == 0x40 || next == 0x48 || next == 0x50 || next == 0x58))
+            {
+                eprintln!(
+                    "step_count={:>10} frame_step={:>6} frame_count={:>6} IN PC={:#06x}",
+                    core.step_count, frame_step, core.frame_count, core.machine.z80.pc
+                );
+            }
+        }
+        if core.frame_count == 0 && core.step_count == 1 {
+            eprintln!(
+                "step_count={:>10} frame_step={:>6} frame_count={:>6} bytes at $0180: {:02x?}",
+                core.step_count,
+                frame_step,
+                core.frame_count,
+                &core.machine.z80.io.mem[0x0180..=0x01b0]
+            );
+        }
+        if core.frame_count == 1 && frame_step % 1000 == 0 {
+            eprintln!(
+                "step_count={:>10} frame_step={:>6} frame_count={:>6} PC={:#06x}",
+                core.step_count, frame_step, core.frame_count, core.machine.z80.pc
+            );
+        }
+        if core.frame_count == 0 && core.step_count == 1 {
+            eprintln!("mem[$2000]: {:02x}", core.machine.z80.io.mem[0x2000]);
+        }
         core.machine.z80.step();
+        core.step_count += 1;
     }
 
-    core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
-
-    // let instr = disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc);
-    // eprintln!(
-    //     "PC={:#06x} SP={:#06x} | {:<20} | verbl={:>3} horcb={:>3} colors={:?}",
-    //     core.machine.z80.pc,
-    //     core.machine.z80.sp,
-    //     instr,
-    //     core.machine.z80.io.verbl,
-    //     core.machine.z80.io.horcb,
-    //     core.machine.z80.io.colors,
-    // );
-    // core.machine.z80.step();
-
-    // let pc = core.machine.z80.pc as usize;
-    // let op = core.machine.z80.io.mem[pc];
-    // let next = core.machine.z80.io.mem[pc + 1];
-    // let is_interesting = matches!(op, 0xD3) // OUT (n), A
-    //     || (op == 0xED && matches!(next, 0x79 | 0xB3)); // OUT (C),A or OTIR
-
-    // if is_interesting {
-    //     let instr = disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc);
-    //     eprintln!(
-    //         "step={:>10} PC={:#06x} SP={:#06x} | {:<20} | verbl={:>3} horcb={:>3} colors={:?}",
-    //         core.step_count,
-    //         core.machine.z80.pc,
-    //         core.machine.z80.sp,
-    //         instr,
-    //         core.machine.z80.io.verbl,
-    //         core.machine.z80.io.horcb,
-    //         core.machine.z80.io.colors,
-    //     );
-    // }
-    // core.step_count += 1;
-    // core.machine.z80.step();
-
+    core.irq_fired_this_frame = false;
     core.frame_count += 1;
 
     // eprintln!("retro_run(): finished");
@@ -356,7 +395,7 @@ pub extern "C" fn retro_cheat_reset() {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn retro_cheat_set(_index: u32,_enabledd: bool, _code: *const std::ffi::c_char) {
+pub extern "C" fn retro_cheat_set(_index: u32, _enabledd: bool, _code: *const std::ffi::c_char) {
     eprintln!("retro_cheat_set(): started");
     eprintln!("retro_cheat_set(): finished");
 }
@@ -403,26 +442,29 @@ fn set_message(msg: &str) {
 fn disassemble_at(mem: &[u8; 0x10000], pc: u16) -> String {
     let pc = pc as usize;
     let op = mem[pc];
+    let b1 = if pc + 1 < 0x10000 { mem[pc + 1] } else { 0 };
+    let b2 = if pc + 2 < 0x10000 { mem[pc + 2] } else { 0 };
+    let b3 = if pc + 3 < 0x10000 { mem[pc + 3] } else { 0 };
     match op {
         0x00 => "NOP".to_string(),
-        0x01 => format!("LD BC, ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
-        0x11 => format!("LD DE, ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
-        0x21 => format!("LD HL, ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
-        0x31 => format!("LD SP, ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
-        0xC3 => format!("JP ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
-        0xCD => format!("CALL ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
+        0x01 => format!("LD BC, ${:04x}", u16::from_le_bytes([b1, b2])),
+        0x11 => format!("LD DE, ${:04x}", u16::from_le_bytes([b1, b2])),
+        0x21 => format!("LD HL, ${:04x}", u16::from_le_bytes([b1, b2])),
+        0x31 => format!("LD SP, ${:04x}", u16::from_le_bytes([b1, b2])),
+        0xC3 => format!("JP ${:04x}", u16::from_le_bytes([b1, b2])),
+        0xCD => format!("CALL ${:04x}", u16::from_le_bytes([b1, b2])),
         0xC9 => "RET".to_string(),
-        0xD3 => format!("OUT (${:02x}), A", mem[pc+1]),
-        0xDB => format!("IN A, (${:02x})", mem[pc+1]),
-        0xED => match mem[pc+1] {
-            0x43 => format!("LD (${:04x}), BC", u16::from_le_bytes([mem[pc+2], mem[pc+3]])),
-            0x53 => format!("LD (${:04x}), DE", u16::from_le_bytes([mem[pc+2], mem[pc+3]])),
-            0x63 => format!("LD (${:04x}), HL", u16::from_le_bytes([mem[pc+2], mem[pc+3]])),
-            0x73 => format!("LD (${:04x}), SP", u16::from_le_bytes([mem[pc+2], mem[pc+3]])),
+        0xD3 => format!("OUT (${:02x}), A", b1),
+        0xDB => format!("IN A, (${:02x})", b1),
+        0xED => match b1 {
+            0x43 => format!("LD (${:04x}), BC", u16::from_le_bytes([b2, b3])),
+            0x53 => format!("LD (${:04x}), DE", u16::from_le_bytes([b2, b3])),
+            0x63 => format!("LD (${:04x}), HL", u16::from_le_bytes([b2, b3])),
+            0x73 => format!("LD (${:04x}), SP", u16::from_le_bytes([b2, b3])),
             0x79 => "OUT (C), A".to_string(),
             0xB3 => "OTIR".to_string(),
             0xB9 => "CPDR".to_string(),
-            _ => format!("ED ${:02x}", mem[pc+1]),
+            _ => format!("ED ${:02x}", b1),
         },
         0xF3 => "DI".to_string(),
         0xFB => "EI".to_string(),
@@ -431,9 +473,9 @@ fn disassemble_at(mem: &[u8; 0x10000], pc: u16) -> String {
         0xC8 => "RET Z".to_string(),
         0xD0 => "RET NC".to_string(),
         0xD8 => "RET C".to_string(),
-        0x18 => format!("JR ${:04x}", (pc as i32 + 2 + mem[pc+1] as i8 as i32) as u16),
-        0x20 => format!("JR NZ, ${:04x}", (pc as i32 + 2 + mem[pc+1] as i8 as i32) as u16),
-        0x28 => format!("JR Z, ${:04x}", (pc as i32 + 2 + mem[pc+1] as i8 as i32) as u16),
+        0x18 => format!("JR ${:04x}", (pc as i32 + 2 + b1 as i8 as i32) as u16),
+        0x20 => format!("JR NZ, ${:04x}", (pc as i32 + 2 + b1 as i8 as i32) as u16),
+        0x28 => format!("JR Z, ${:04x}", (pc as i32 + 2 + b1 as i8 as i32) as u16),
         _ => format!("${:02x}", op),
     }
 }

@@ -4,8 +4,8 @@ use crate::core::AstrocadeCore;
 
 pub mod core;
 pub mod libretro;
-pub mod types;
 pub mod machine;
+pub mod types;
 
 static CORE: Mutex<Option<AstrocadeCore>> = Mutex::new(None);
 

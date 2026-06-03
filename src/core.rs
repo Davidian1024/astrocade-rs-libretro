@@ -1,5 +1,5 @@
-use z80::Z80;
 use crate::machine::IO;
+use z80::Z80;
 
 use crate::machine::Machine;
 use crate::machine::video;
@@ -18,6 +18,8 @@ pub struct AstrocadeCore {
     pub(crate) last_button: bool,
     pub(crate) machine: Machine,
     pub(crate) step_count: u64,
+    pub(crate) irq_pending_cycles: u32,
+    pub(crate) irq_fired_this_frame: bool,
 }
 
 impl AstrocadeCore {
@@ -32,6 +34,11 @@ impl AstrocadeCore {
             inmod: 0,
             infbk: 0,
             inlin: 0,
+            funcgen_expand_count: 0,
+            funcgen_shift_prev_data: 0,
+            funcgen_rotate_count: 0,
+            funcgen_rotate_data: [0u8; 4],
+            funcgen_expand_color: [0u8; 2],
         };
         let mut machine = Machine {
             z80: Z80::<IO>::new(io),
@@ -47,6 +54,8 @@ impl AstrocadeCore {
             last_button: false,
             machine,
             step_count: 0,
+            irq_pending_cycles: 0,
+            irq_fired_this_frame: false,
         }
     }
 }
