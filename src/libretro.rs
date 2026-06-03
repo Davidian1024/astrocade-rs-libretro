@@ -1,4 +1,4 @@
-use crate::{core::AstrocadeCore, types::RetroSystemInfo};
+use crate::{core::AstrocadeCore, retro_log, types::RetroSystemInfo};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn retro_api_version() -> u32 {
@@ -47,6 +47,16 @@ pub extern "C" fn retro_set_environment(
     cb: unsafe extern "C" fn(u32, *mut std::ffi::c_void) -> bool,
 ) {
     eprintln!("retro_set_environment(): started");
+
+    let mut log_cb = crate::types::RetroLogCallback { log: None };
+    unsafe { cb(
+        crate::types::RETRO_ENVIRONMENT_GET_LOG_INTERFACE,
+        &mut log_cb as *mut crate::types::RetroLogCallback as *mut std::ffi::c_void,
+    ) };
+    if log_cb.log.is_some() {
+        *crate::LOG_CALLBACK.lock().unwrap() = log_cb.log;
+    }
+
     unsafe {
         crate::ENVIRONMENT_CALLBACK = Some(cb);
 
@@ -155,10 +165,11 @@ pub extern "C" fn retro_load_game(_game: *const crate::types::RetroGameInfo) -> 
         Ok(data) => data,
         Err(e) => {
             let msg = format!("astrocade: BIOS not found.");
-            eprintln!(
-                "retro_load_game(): failed to load BIOS from {}: {}",
-                bios_path, e
-            );
+            // eprintln!(
+            //     "retro_load_game(): failed to load BIOS from {}: {}",
+            //     bios_path, e
+            // );
+            retro_log!(crate::types::RetroLogLevel::Error, "Failed to load BIOS from {}: {}", bios_path, e);
             set_message(&msg);
             return false;
         }
@@ -177,7 +188,8 @@ pub extern "C" fn retro_load_game(_game: *const crate::types::RetroGameInfo) -> 
         core.machine.z80.io.mem[0x0000..0x2000].copy_from_slice(&bios_data);
     }
 
-    eprintln!("retro_load_game(): BIOS loaded from {}", bios_path);
+    // eprintln!("retro_load_game(): BIOS loaded from {}", bios_path);
+    retro_log!(crate::types::RetroLogLevel::Info, "BIOS loaded from {}", bios_path);
     eprintln!("retro_load_game(): finished");
     true
 }
@@ -246,6 +258,7 @@ pub extern "C" fn retro_run() {
         if core.irq_pending_cycles > 0 {
             core.irq_pending_cycles -= 1;
             if core.irq_pending_cycles == 0 {
+                #[cfg(feature = "debug_logging")]
                 eprintln!(
                     "step_count={:>10} frame_step={:>6} frame_count={:>6} iff1={} inlin={}; IRQ fired",
                     core.step_count,
@@ -255,18 +268,22 @@ pub extern "C" fn retro_run() {
                     core.machine.z80.io.inlin
                 );
                 core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
+                #[cfg(feature = "debug_logging")]
                 eprintln!(
                     "mem[$0003..=$0007] after IRQ: {:02x?}",
                     &core.machine.z80.io.mem[0x0003..=0x0007]
                 );
+                #[cfg(feature = "debug_logging")]
                 eprintln!(
                     "mem[$0c61..=$0c70] after IRQ: {:02x?}",
                     &core.machine.z80.io.mem[0x0c61..=0x0c70]
                 );
+                #[cfg(feature = "debug_logging")]
                 eprintln!("mem[$0c6a..=$0c80]: {:02x?}", &core.machine.z80.io.mem[0x0c6a..=0x0c80]);
                 core.irq_fired_this_frame = true;
             }
         }
+        #[cfg(feature = "debug_logging")]
         if (op == 0xFB || op == 0xF3 || op == 0x76)  {
             eprintln!(
                 "step_count={:>10} frame_step={:>6} frame_count={:>6} {} PC={:#06x} iff1={}",
@@ -282,18 +299,22 @@ pub extern "C" fn retro_run() {
                 core.machine.z80.iff1,
             );
         }
+        #[cfg(feature = "debug_logging")]
         let next = if (pc as usize) + 1 < 0x10000 {
             core.machine.z80.io.mem[pc as usize + 1]
         } else {
             0
         };
+        #[cfg(feature = "debug_logging")]
         let b2 = if pc + 2 < 0x10000 { core.machine.z80.io.mem[pc + 2] } else { 0 };
+        #[cfg(feature = "debug_logging")]
         if op == 0xC3 && next == 0x00 && b2 == 0x00 {
             eprintln!(
                 "step_count={:>10} frame_step={:>6} frame_count={:>6} JP $0000 PC={:#06x}",
                 core.step_count, frame_step, core.frame_count, core.machine.z80.pc
             );
         }
+        #[cfg(feature = "debug_logging")]
         if core.frame_count >= 1 && core.frame_count < 3 {
             if op == 0xDB // IN A, (n)
             || (op == 0xED && (next == 0x78 || next == 0x40 || next == 0x48 || next == 0x50 || next == 0x58))
@@ -304,6 +325,7 @@ pub extern "C" fn retro_run() {
                 );
             }
         }
+        #[cfg(feature = "debug_logging")]
         if core.frame_count == 0 && core.step_count == 1 {
             eprintln!(
                 "step_count={:>10} frame_step={:>6} frame_count={:>6} bytes at $0180: {:02x?}",
@@ -313,12 +335,14 @@ pub extern "C" fn retro_run() {
                 &core.machine.z80.io.mem[0x0180..=0x01b0]
             );
         }
+        #[cfg(feature = "debug_logging")]
         if core.frame_count == 1 && frame_step % 1000 == 0 {
             eprintln!(
                 "step_count={:>10} frame_step={:>6} frame_count={:>6} PC={:#06x}",
                 core.step_count, frame_step, core.frame_count, core.machine.z80.pc
             );
         }
+        #[cfg(feature = "debug_logging")]
         if core.frame_count == 0 && core.step_count == 1 {
             eprintln!("mem[$2000]: {:02x}", core.machine.z80.io.mem[0x2000]);
         }
@@ -439,6 +463,7 @@ fn set_message(msg: &str) {
     }
 }
 
+#[cfg(feature = "debug_logging")]
 fn disassemble_at(mem: &[u8; 0x10000], pc: u16) -> String {
     let pc = pc as usize;
     let op = mem[pc];

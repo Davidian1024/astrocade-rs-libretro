@@ -28,3 +28,15 @@ pub static mut INPUT_POLL_CALLBACK: Option<unsafe extern "C" fn()> = None;
 pub static mut INPUT_STATE_CALLBACK: Option<unsafe extern "C" fn(u32, u32, u32, u32) -> i16> = None;
 
 pub static SYSTEM_DIRECTORY: Mutex<Option<String>> = Mutex::new(None);
+
+pub static LOG_CALLBACK: Mutex<Option<unsafe extern "C" fn(crate::types::RetroLogLevel, *const std::ffi::c_char)>> = Mutex::new(None);
+
+#[macro_export]
+macro_rules! retro_log {
+    ($level:expr, $($arg:tt)*) => {
+        if let Some(cb) = *crate::LOG_CALLBACK.lock().unwrap() {
+            let msg = std::ffi::CString::new(format!("{}\n", format!($($arg)*))).unwrap();
+            unsafe { cb($level, msg.as_ptr()); }
+        }
+    }
+}
