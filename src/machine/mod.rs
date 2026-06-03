@@ -15,6 +15,12 @@ pub struct IO {
     pub magic: u8,
     // Expander register, port $19
     pub xpand: u8,
+    // interrupt mode, port $0E
+    pub inmod: u8,
+    // interrupt feedback, port $0D
+    pub infbk: u8,
+    // interrupt line, port $0F
+    pub inlin: u8,
 }
 
 impl Z80_io for IO {
@@ -27,7 +33,15 @@ impl Z80_io for IO {
             0x00..=0x07 => self.colors[addr as usize] = value,
             0x09 => self.horcb = value,
             0x0A => self.verbl = value,
+            0x0B => {
+                eprintln!("COLBX write: addr={:#06x} value={:#04x}", addr, value);
+                let reg = ((addr >> 8) & 0x07) as usize;
+                self.colors[reg] = value;
+            },
             0x0C => self.magic = value,
+            0x0D => self.infbk = value,
+            0x0E => self.inlin = value,   // was inmod
+            0x0F => self.inmod = value,   // was inlin
             0x19 => self.xpand = value,
             _ => {}
         }

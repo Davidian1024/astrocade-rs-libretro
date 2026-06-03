@@ -215,11 +215,80 @@ pub extern "C" fn retro_run() {
 
     // Machine
 
+    // const CYCLES_PER_FRAME: u32 = 1;
     const CYCLES_PER_FRAME: u32 = 1_789_000 / 60;
 
-    for _ in 0..CYCLES_PER_FRAME {
+    for i in 0..CYCLES_PER_FRAME {
+        if i % 5000 == 0 {
+            eprintln!("step={} PC={:#06x} I={:#04x} inmod={:#04x}", 
+                core.step_count, 
+                core.machine.z80.pc,
+                core.machine.z80.i,
+                core.machine.z80.io.inmod,
+            );
+        }
+
+        // let pc = core.machine.z80.pc as usize;
+        // let op = core.machine.z80.io.mem[pc];
+        // let next = core.machine.z80.io.mem[pc + 1];
+        // let is_interesting = matches!(op, 0xD3) // OUT (n), A
+        //     || (op == 0xED && matches!(next, 0x79 | 0xB3)); // OUT (C),A or OTIR
+
+        // if is_interesting {
+            // let instr = disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc);
+            // eprintln!(
+            //     "step={:>10} PC={:#06x} SP={:#06x} | {:<20} | verbl={:>3} horcb={:>3} colors={:?}",
+            //     core.step_count,
+            //     core.machine.z80.pc,
+            //     core.machine.z80.sp,
+            //     instr,
+            //     core.machine.z80.io.verbl,
+            //     core.machine.z80.io.horcb,
+            //     core.machine.z80.io.colors,
+            // );
+        // }
+        core.step_count += 1;
+
         core.machine.z80.step();
     }
+
+    core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
+
+    // let instr = disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc);
+    // eprintln!(
+    //     "PC={:#06x} SP={:#06x} | {:<20} | verbl={:>3} horcb={:>3} colors={:?}",
+    //     core.machine.z80.pc,
+    //     core.machine.z80.sp,
+    //     instr,
+    //     core.machine.z80.io.verbl,
+    //     core.machine.z80.io.horcb,
+    //     core.machine.z80.io.colors,
+    // );
+    // core.machine.z80.step();
+
+    // let pc = core.machine.z80.pc as usize;
+    // let op = core.machine.z80.io.mem[pc];
+    // let next = core.machine.z80.io.mem[pc + 1];
+    // let is_interesting = matches!(op, 0xD3) // OUT (n), A
+    //     || (op == 0xED && matches!(next, 0x79 | 0xB3)); // OUT (C),A or OTIR
+
+    // if is_interesting {
+    //     let instr = disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc);
+    //     eprintln!(
+    //         "step={:>10} PC={:#06x} SP={:#06x} | {:<20} | verbl={:>3} horcb={:>3} colors={:?}",
+    //         core.step_count,
+    //         core.machine.z80.pc,
+    //         core.machine.z80.sp,
+    //         instr,
+    //         core.machine.z80.io.verbl,
+    //         core.machine.z80.io.horcb,
+    //         core.machine.z80.io.colors,
+    //     );
+    // }
+    // core.step_count += 1;
+    // core.machine.z80.step();
+
+    core.frame_count += 1;
 
     // eprintln!("retro_run(): finished");
 }
@@ -328,5 +397,43 @@ fn set_message(msg: &str) {
                 &mut retro_msg as *mut crate::types::RetroMessage as *mut std::ffi::c_void,
             );
         }
+    }
+}
+
+fn disassemble_at(mem: &[u8; 0x10000], pc: u16) -> String {
+    let pc = pc as usize;
+    let op = mem[pc];
+    match op {
+        0x00 => "NOP".to_string(),
+        0x01 => format!("LD BC, ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
+        0x11 => format!("LD DE, ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
+        0x21 => format!("LD HL, ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
+        0x31 => format!("LD SP, ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
+        0xC3 => format!("JP ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
+        0xCD => format!("CALL ${:04x}", u16::from_le_bytes([mem[pc+1], mem[pc+2]])),
+        0xC9 => "RET".to_string(),
+        0xD3 => format!("OUT (${:02x}), A", mem[pc+1]),
+        0xDB => format!("IN A, (${:02x})", mem[pc+1]),
+        0xED => match mem[pc+1] {
+            0x43 => format!("LD (${:04x}), BC", u16::from_le_bytes([mem[pc+2], mem[pc+3]])),
+            0x53 => format!("LD (${:04x}), DE", u16::from_le_bytes([mem[pc+2], mem[pc+3]])),
+            0x63 => format!("LD (${:04x}), HL", u16::from_le_bytes([mem[pc+2], mem[pc+3]])),
+            0x73 => format!("LD (${:04x}), SP", u16::from_le_bytes([mem[pc+2], mem[pc+3]])),
+            0x79 => "OUT (C), A".to_string(),
+            0xB3 => "OTIR".to_string(),
+            0xB9 => "CPDR".to_string(),
+            _ => format!("ED ${:02x}", mem[pc+1]),
+        },
+        0xF3 => "DI".to_string(),
+        0xFB => "EI".to_string(),
+        0xFF => "RST $38".to_string(),
+        0xC0 => "RET NZ".to_string(),
+        0xC8 => "RET Z".to_string(),
+        0xD0 => "RET NC".to_string(),
+        0xD8 => "RET C".to_string(),
+        0x18 => format!("JR ${:04x}", (pc as i32 + 2 + mem[pc+1] as i8 as i32) as u16),
+        0x20 => format!("JR NZ, ${:04x}", (pc as i32 + 2 + mem[pc+1] as i8 as i32) as u16),
+        0x28 => format!("JR Z, ${:04x}", (pc as i32 + 2 + mem[pc+1] as i8 as i32) as u16),
+        _ => format!("${:02x}", op),
     }
 }

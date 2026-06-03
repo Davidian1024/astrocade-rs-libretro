@@ -17,6 +17,7 @@ pub struct AstrocadeCore {
     pub(crate) waveform: Waveform,
     pub(crate) last_button: bool,
     pub(crate) machine: Machine,
+    pub(crate) step_count: u64,
 }
 
 impl AstrocadeCore {
@@ -28,12 +29,16 @@ impl AstrocadeCore {
             verbl: 0,
             magic: 0,
             xpand: 0,
+            inmod: 0,
+            infbk: 0,
+            inlin: 0,
         };
-        let machine = Machine {
+        let mut machine = Machine {
             z80: Z80::<IO>::new(io),
             palette: video::build_palette(),
             frame_buffer: vec![0u32; 160 * 102],
         };
+        // machine.z80.sp = 0x4FCE;
         AstrocadeCore {
             frame_count: 0,
             phase: 0.0,
@@ -41,6 +46,7 @@ impl AstrocadeCore {
             waveform: Waveform::Square,
             last_button: false,
             machine,
+            step_count: 0,
         }
     }
 }
