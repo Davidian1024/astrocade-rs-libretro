@@ -10,6 +10,12 @@ pub const RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: u32 = 18;
 
 pub const RETRO_ENVIRONMENT_GET_LOG_INTERFACE: u32 = 27;
 
+pub const RETRO_DEVICE_ID_JOYPAD_B:      u32 = 0;
+pub const RETRO_DEVICE_ID_JOYPAD_UP:     u32 = 4;
+pub const RETRO_DEVICE_ID_JOYPAD_DOWN:   u32 = 5;
+pub const RETRO_DEVICE_ID_JOYPAD_LEFT:   u32 = 6;
+pub const RETRO_DEVICE_ID_JOYPAD_RIGHT:  u32 = 7;
+
 #[repr(C)]
 pub struct RetroSystemInfo {
     pub library_name: *const std::ffi::c_char,

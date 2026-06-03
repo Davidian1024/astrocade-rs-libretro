@@ -28,6 +28,8 @@ pub struct IO {
     pub funcgen_rotate_count: u8,      // counter for rotate mode
     pub funcgen_rotate_data: [u8; 4],  // accumulated data for rotate
     pub funcgen_expand_color: [u8; 2], // colors from xpand register
+
+    pub input: [u8; 4],  // handle state for players 1-4
 }
 
 impl Z80_io for IO {
@@ -72,9 +74,13 @@ impl Z80_io for IO {
         }
     }
 
-    fn port_in(&self, _addr: u16) -> u8 {
-        // controllers and keyboard — stub for now
-        0xFF
+    fn port_in(&self, addr: u16) -> u8 {
+        let port = addr as u8;
+        match port {
+            0x00..=0x03 => self.input[addr as usize & 0x03],
+            0x04..=0x0F => 0x00,  // controllers: 0 = no input
+            _ => 0xFF,
+        }
     }
 }
 

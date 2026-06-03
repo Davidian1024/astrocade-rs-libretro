@@ -206,6 +206,22 @@ pub extern "C" fn retro_run() {
     if let Some(poll) = unsafe { crate::INPUT_POLL_CALLBACK } {
         unsafe { poll() };
     }
+    if let Some(state) = unsafe { crate::INPUT_STATE_CALLBACK } {
+        for port in 0..4u32 {
+            let up = unsafe { state(port,1,0,4) != 0 };
+            let down = unsafe { state(port,1,0,5) != 0 };
+            let left = unsafe { state(port,1,0,6) != 0 };
+            let right = unsafe { state(port,1,0,7) != 0 };
+            let trigger = unsafe { state(port,1,0,0) != 0 };
+
+            core.machine.z80.io.input[port as usize] =
+                    (if up {0x01} else {0x00})
+                |   (if down {0x02} else {0x00})
+                |   (if left {0x04} else {0x00})
+                |   (if right {0x08} else {0x00})
+                |   (if trigger {0x10} else {0x00});
+        }
+    }
 
     // Video
 
@@ -336,10 +352,10 @@ pub extern "C" fn retro_run() {
             );
         }
         #[cfg(feature = "debug_logging")]
-        if core.frame_count == 1 && frame_step % 1000 == 0 {
+        if frame_step % 10000 == 0 {
             eprintln!(
-                "step_count={:>10} frame_step={:>6} frame_count={:>6} PC={:#06x}",
-                core.step_count, frame_step, core.frame_count, core.machine.z80.pc
+                "step_count={:>10} frame_step={:>6} frame_count={:>6} PC={:#06x} Input={:?}",
+                core.step_count, frame_step, core.frame_count, core.machine.z80.pc, core.machine.z80.io.input,
             );
         }
         #[cfg(feature = "debug_logging")]
