@@ -40,6 +40,8 @@ impl AstrocadeCore {
             funcgen_expand_color: [0u8; 2],
             input: [0u8; 4],
             keypad: [0u8; 4],
+            color_events: vec![],
+            current_frame_step: 0,
         };
         let mut machine = Machine {
             z80: Z80::<IO>::new(io),

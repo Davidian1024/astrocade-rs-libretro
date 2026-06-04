@@ -31,6 +31,9 @@ pub struct IO {
 
     pub input: [u8; 4],  // handle state for players 1-4
     pub keypad: [u8; 4],
+
+    pub color_events: Vec<(u32, usize, u8)>, // (frame_step, register_index, value)
+    pub current_frame_step: u32,
 }
 
 impl Z80_io for IO {
@@ -49,11 +52,13 @@ impl Z80_io for IO {
 
     fn port_out(&mut self, addr: u16, value: u8) {
         match addr as u8 {
-            0x00..=0x07 => self.colors[addr as usize] = value,
+            0x00..=0x07 => {
+                self.colors[addr as usize] = value;
+                self.color_events.push((self.current_frame_step, addr as usize, value));
+            }
             0x09 => self.horcb = value,
             0x0A => self.verbl = value,
             0x0B => {
-                // eprintln!("COLBX write: addr={:#06x} value={:#04x}", addr, value);
                 let reg = ((addr >> 8) & 0x07) as usize;
                 self.colors[reg] = value;
             }

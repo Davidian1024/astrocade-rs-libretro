@@ -277,6 +277,7 @@ pub extern "C" fn retro_run() {
     // Machine
     const CYCLES_PER_FRAME: u32 = 1_789_000 / 60;
 
+    core.machine.z80.io.color_events.clear();
     for frame_step in 0..CYCLES_PER_FRAME {
         let pc = core.machine.z80.pc as usize;
         let op = core.machine.z80.io.mem[pc];
@@ -289,66 +290,12 @@ pub extern "C" fn retro_run() {
             core.irq_pending_cycles -= 1;
             if core.irq_pending_cycles == 0 {
                 if core.machine.z80.halted {
-                    debug_print!(core.step_count, core.frame_count, frame_step,
-                        "IRQ fired iff1={} inlin={}", core.machine.z80.iff1, core.machine.z80.io.inlin);
                     core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
                 } else {
                     // Not halted yet, keep waiting
                     core.irq_pending_cycles = 10;
                 }
             }
-        }
-
-        #[cfg(feature = "debug_logging")]
-        if matches!(op, 0xFB | 0xF3 | 0x76) {
-            debug_print!(core.step_count, core.frame_count, frame_step, "{} PC={:#06x} iff1={}",
-                match op { 0xFB => "EI", 0xF3 => "DI", _ => "HALT" },
-                core.machine.z80.pc,
-                core.machine.z80.iff1,
-            );
-        }
-
-        // DEBUG: Trap $0514 calls
-        #[cfg(feature = "debug_logging")]
-        if core.machine.z80.pc == 0x0514 {
-            debug_print!(core.step_count, core.frame_count, frame_step, 
-                "CALL $0514 SP={:#06x} $4FCE={:#06x} $4FEA={:#04x}",
-                core.machine.z80.sp,
-                u16::from_le_bytes([core.machine.z80.io.mem[0x4FCE], core.machine.z80.io.mem[0x4FCF]]),
-                core.machine.z80.io.mem[0x4FEA],
-            );
-        }
-
-        // DEBUG: ROM dump $03EC
-        #[cfg(feature = "debug_logging")]
-        if core.frame_count == 1 && core.step_count == 29817 {
-            debug_print!(core.step_count, core.frame_count, frame_step, "$03EC: {:02x?}", &core.machine.z80.io.mem[0x03EC..=0x0410]);
-        }
-
-        // DEBUG: ROM dump $0010-$002F
-        #[cfg(feature = "debug_logging")]
-        if core.frame_count == 1 && core.step_count == 29817 {
-            debug_print!(core.step_count, core.frame_count, frame_step, "$0010: {:02x?}", &core.machine.z80.io.mem[0x0010..=0x002F]);
-        }
-
-        // DEBUG: Trap $001F return from frame sync loop
-        #[cfg(feature = "debug_logging")]
-        if core.machine.z80.pc == 0x001F {
-            debug_print!(core.step_count, core.frame_count, frame_step,
-                "Frame sync RET SP={:#06x} $4FD4={:#04x} $4FEA={:#04x}",
-                core.machine.z80.sp,
-                core.machine.z80.io.mem[0x4FD4],
-                core.machine.z80.io.mem[0x4FEA],
-            );
-        }
-
-        // DEBUG: Trap entry to HALT loop at $001B
-        #[cfg(feature = "debug_logging")]
-        if core.machine.z80.pc == 0x001B {
-            debug_print!(core.step_count, core.frame_count, frame_step,
-                "HALT loop entry SP={:#06x}",
-                core.machine.z80.sp,
-            );
         }
 
         // DEBUG: Stack at HALT loop entry
@@ -377,6 +324,7 @@ pub extern "C" fn retro_run() {
             );
         }
 
+        core.machine.z80.io.current_frame_step = frame_step;
         core.machine.z80.step();
         core.step_count += 1;
     }
