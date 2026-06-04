@@ -30,6 +30,7 @@ pub struct IO {
     pub funcgen_expand_color: [u8; 2], // colors from xpand register
 
     pub input: [u8; 4],  // handle state for players 1-4
+    pub keypad: [u8; 4],
 }
 
 impl Z80_io for IO {
@@ -76,12 +77,29 @@ impl Z80_io for IO {
 
     fn port_in(&self, addr: u16) -> u8 {
         let port = addr as u8;
-        match port {
-            0x00..=0x03 => self.input[addr as usize & 0x03],
-            0x04..=0x0F => 0x00,  // controllers: 0 = no input
+        let result = match port {
+            0x00..=0x0F => 0x00,  // video/control registers, return 0
+            0x10..=0x17 => {
+                let high = (addr >> 8) as u8;
+                if high & 0x04 != 0 {
+                    let bank = (high & 0x03) as usize;
+                    // eprintln!("keypad read: addr={:#06x} bank={} keypad[{}]={:#04x}", 
+                    //     addr, bank, bank, self.keypad[bank]);
+                    self.keypad[bank]
+                } else {
+                    let ctrl = (high & 0x03) as usize;
+                    if ctrl < 4 { self.input[ctrl] } else { 0x00 }
+                }
+            }
+            0x18..=0x1F => 0x00,  // sound chip pot reads etc, stub
             _ => 0xFF,
+        };
+        if self.keypad[0] != 0 || self.input[0] != 0 {
+            eprintln!("port_in: addr={:#06x} port={:#04x} -> {:#04x}", addr, port, result);
         }
+        result
     }
+
 }
 
 impl IO {

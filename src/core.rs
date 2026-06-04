@@ -40,6 +40,7 @@ impl AstrocadeCore {
             funcgen_rotate_data: [0u8; 4],
             funcgen_expand_color: [0u8; 2],
             input: [0u8; 4],
+            keypad: [0u8; 4],
         };
         let mut machine = Machine {
             z80: Z80::<IO>::new(io),

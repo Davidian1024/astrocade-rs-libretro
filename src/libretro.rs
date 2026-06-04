@@ -57,6 +57,12 @@ pub extern "C" fn retro_set_environment(
         *crate::LOG_CALLBACK.lock().unwrap() = log_cb.log;
     }
 
+    let mut keyboard_reporting = true;
+    unsafe { cb(
+        crate::types::RETRO_ENVIRONMENT_SET_KEYBOARD_REPORTING,
+        &mut keyboard_reporting as *mut bool as *mut std::ffi::c_void,
+    ) };
+
     unsafe {
         crate::ENVIRONMENT_CALLBACK = Some(cb);
 
@@ -219,8 +225,33 @@ pub extern "C" fn retro_run() {
                 |   (if down {0x02} else {0x00})
                 |   (if left {0x04} else {0x00})
                 |   (if right {0x08} else {0x00})
-                |   (if trigger {0x10} else {0x00});
+                |   (if trigger {0x10} else {0x00});                
         }
+
+        let key1  = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_1) } != 0;
+        let key2  = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_2) } != 0;
+        let key3  = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_3) } != 0;
+        let key4  = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_4) } != 0;
+        let enter = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_RETURN) } != 0;
+
+        #[cfg(feature = "debug_logging")]
+        eprintln!(
+            "step_count={:>10} frame_count={:>6}; key1={} key2={} key3={} key4={} enter={}",
+            core.step_count,
+            core.frame_count,
+            key1,
+            key2,
+            key3,
+            key4,
+            enter,
+        );
+
+        core.machine.z80.io.keypad[0] = if enter { 0x20 } else { 0x00 };
+        core.machine.z80.io.keypad[1] = if key3  { 0x10 } else { 0x00 };
+        core.machine.z80.io.keypad[2] = if key2  { 0x10 } else { 0x00 };
+        core.machine.z80.io.keypad[3] = (if key1 { 0x10 } else { 0x00 })
+                                    | (if key4 { 0x08 } else { 0x00 });
+
     }
 
     // Video
@@ -349,13 +380,6 @@ pub extern "C" fn retro_run() {
                 frame_step,
                 core.frame_count,
                 &core.machine.z80.io.mem[0x0180..=0x01b0]
-            );
-        }
-        #[cfg(feature = "debug_logging")]
-        if frame_step % 10000 == 0 {
-            eprintln!(
-                "step_count={:>10} frame_step={:>6} frame_count={:>6} PC={:#06x} Input={:?}",
-                core.step_count, frame_step, core.frame_count, core.machine.z80.pc, core.machine.z80.io.input,
             );
         }
         #[cfg(feature = "debug_logging")]
