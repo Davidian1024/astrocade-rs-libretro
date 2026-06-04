@@ -19,7 +19,6 @@ pub struct AstrocadeCore {
     pub(crate) machine: Machine,
     pub(crate) step_count: u64,
     pub(crate) irq_pending_cycles: u32,
-    pub(crate) irq_fired_this_frame: bool,
 }
 
 impl AstrocadeCore {
@@ -57,7 +56,6 @@ impl AstrocadeCore {
             machine,
             step_count: 0,
             irq_pending_cycles: 0,
-            irq_fired_this_frame: false,
         }
     }
 }

@@ -39,11 +39,11 @@ impl Z80_io for IO {
     }
 
     fn write_byte(&mut self, addr: u16, value: u8) {
-        let addr = addr as usize;
-        if addr < 0x4000 {
-            self.funcgen_write(addr, value);
+        let addr_usize = addr as usize;
+        if addr_usize < 0x4000 {
+            self.funcgen_write(addr_usize, value);
         } else {
-            self.mem[addr] = value;
+            self.mem[addr_usize] = value;
         }
     }
 
@@ -80,23 +80,20 @@ impl Z80_io for IO {
         let result = match port {
             0x00..=0x0F => 0x00,  // video/control registers, return 0
             0x10..=0x17 => {
-                let high = (addr >> 8) as u8;
-                if high & 0x04 != 0 {
-                    let bank = (high & 0x03) as usize;
-                    // eprintln!("keypad read: addr={:#06x} bank={} keypad[{}]={:#04x}", 
-                    //     addr, bank, bank, self.keypad[bank]);
+                let slot = (addr & 0x07) as u8;  // use low bits, not high byte
+                if slot & 0x04 != 0 {
+                    // keypad
+                    let bank = (slot & 0x03) as usize;
                     self.keypad[bank]
                 } else {
-                    let ctrl = (high & 0x03) as usize;
+                    // handle
+                    let ctrl = (slot & 0x03) as usize;
                     if ctrl < 4 { self.input[ctrl] } else { 0x00 }
                 }
             }
             0x18..=0x1F => 0x00,  // sound chip pot reads etc, stub
             _ => 0xFF,
         };
-        if self.keypad[0] != 0 || self.input[0] != 0 {
-            eprintln!("port_in: addr={:#06x} port={:#04x} -> {:#04x}", addr, port, result);
-        }
         result
     }
 

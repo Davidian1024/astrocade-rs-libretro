@@ -40,3 +40,17 @@ macro_rules! retro_log {
         }
     }
 }
+
+#[macro_export]
+macro_rules! debug_print {
+    ($step:expr, $frame:expr, $fstep:expr, $($arg:tt)*) => {
+        #[cfg(feature = "debug_logging")]
+        eprintln!(
+            "step={:>12} frame={:>6} fstep={:>6} | {}",
+            $step,
+            $frame,
+            $fstep,
+            format!($($arg)*)
+        );
+    }
+}

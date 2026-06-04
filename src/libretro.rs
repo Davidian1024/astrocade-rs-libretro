@@ -1,4 +1,4 @@
-use crate::{core::AstrocadeCore, retro_log, types::RetroSystemInfo};
+use crate::{core::AstrocadeCore, debug_print, retro_log, types::RetroSystemInfo};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn retro_api_version() -> u32 {
@@ -234,18 +234,6 @@ pub extern "C" fn retro_run() {
         let key4  = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_4) } != 0;
         let enter = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_RETURN) } != 0;
 
-        #[cfg(feature = "debug_logging")]
-        eprintln!(
-            "step_count={:>10} frame_count={:>6}; key1={} key2={} key3={} key4={} enter={}",
-            core.step_count,
-            core.frame_count,
-            key1,
-            key2,
-            key3,
-            key4,
-            enter,
-        );
-
         core.machine.z80.io.keypad[0] = if enter { 0x20 } else { 0x00 };
         core.machine.z80.io.keypad[1] = if key3  { 0x10 } else { 0x00 };
         core.machine.z80.io.keypad[2] = if key2  { 0x10 } else { 0x00 };
@@ -287,110 +275,112 @@ pub extern "C" fn retro_run() {
     }
 
     // Machine
-
-    // const CYCLES_PER_FRAME: u32 = 1;
     const CYCLES_PER_FRAME: u32 = 1_789_000 / 60;
-    const SCANLINE_CYCLES: u32 = CYCLES_PER_FRAME / 95;
-
-    let irq_cycle = 15000u32;
 
     for frame_step in 0..CYCLES_PER_FRAME {
         let pc = core.machine.z80.pc as usize;
         let op = core.machine.z80.io.mem[pc];
-        if op == 0xFB && !core.irq_fired_this_frame {
-            // EI just executed (well, about to), fire IRQ after a short delay
-            // Use a counter to fire ~100 cycles after EI
+
+        if op == 0xFB {
             core.irq_pending_cycles = 100;
         }
+
         if core.irq_pending_cycles > 0 {
             core.irq_pending_cycles -= 1;
             if core.irq_pending_cycles == 0 {
-                #[cfg(feature = "debug_logging")]
-                eprintln!(
-                    "step_count={:>10} frame_step={:>6} frame_count={:>6} iff1={} inlin={}; IRQ fired",
-                    core.step_count,
-                    frame_step,
-                    core.frame_count,
-                    core.machine.z80.iff1,
-                    core.machine.z80.io.inlin
-                );
-                core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
-                #[cfg(feature = "debug_logging")]
-                eprintln!(
-                    "mem[$0003..=$0007] after IRQ: {:02x?}",
-                    &core.machine.z80.io.mem[0x0003..=0x0007]
-                );
-                #[cfg(feature = "debug_logging")]
-                eprintln!(
-                    "mem[$0c61..=$0c70] after IRQ: {:02x?}",
-                    &core.machine.z80.io.mem[0x0c61..=0x0c70]
-                );
-                #[cfg(feature = "debug_logging")]
-                eprintln!("mem[$0c6a..=$0c80]: {:02x?}", &core.machine.z80.io.mem[0x0c6a..=0x0c80]);
-                core.irq_fired_this_frame = true;
+                if core.machine.z80.halted {
+                    debug_print!(core.step_count, core.frame_count, frame_step,
+                        "IRQ fired iff1={} inlin={}", core.machine.z80.iff1, core.machine.z80.io.inlin);
+                    core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
+                } else {
+                    // Not halted yet, keep waiting
+                    core.irq_pending_cycles = 10;
+                }
             }
         }
+
         #[cfg(feature = "debug_logging")]
-        if (op == 0xFB || op == 0xF3 || op == 0x76)  {
-            eprintln!(
-                "step_count={:>10} frame_step={:>6} frame_count={:>6} {} PC={:#06x} iff1={}",
-                core.step_count,
-                frame_step,
-                core.frame_count,
-                match op {
-                    0xFB => "EI",
-                    0xF3 => "DI",
-                    _ => "HALT",
-                },
+        if matches!(op, 0xFB | 0xF3 | 0x76) {
+            debug_print!(core.step_count, core.frame_count, frame_step, "{} PC={:#06x} iff1={}",
+                match op { 0xFB => "EI", 0xF3 => "DI", _ => "HALT" },
                 core.machine.z80.pc,
                 core.machine.z80.iff1,
             );
         }
+
+        // DEBUG: Trap $0514 calls
         #[cfg(feature = "debug_logging")]
-        let next = if (pc as usize) + 1 < 0x10000 {
-            core.machine.z80.io.mem[pc as usize + 1]
-        } else {
-            0
-        };
-        #[cfg(feature = "debug_logging")]
-        let b2 = if pc + 2 < 0x10000 { core.machine.z80.io.mem[pc + 2] } else { 0 };
-        #[cfg(feature = "debug_logging")]
-        if op == 0xC3 && next == 0x00 && b2 == 0x00 {
-            eprintln!(
-                "step_count={:>10} frame_step={:>6} frame_count={:>6} JP $0000 PC={:#06x}",
-                core.step_count, frame_step, core.frame_count, core.machine.z80.pc
+        if core.machine.z80.pc == 0x0514 {
+            debug_print!(core.step_count, core.frame_count, frame_step, 
+                "CALL $0514 SP={:#06x} $4FCE={:#06x} $4FEA={:#04x}",
+                core.machine.z80.sp,
+                u16::from_le_bytes([core.machine.z80.io.mem[0x4FCE], core.machine.z80.io.mem[0x4FCF]]),
+                core.machine.z80.io.mem[0x4FEA],
             );
         }
+
+        // DEBUG: ROM dump $03EC
         #[cfg(feature = "debug_logging")]
-        if core.frame_count >= 1 && core.frame_count < 3 {
-            if op == 0xDB // IN A, (n)
-            || (op == 0xED && (next == 0x78 || next == 0x40 || next == 0x48 || next == 0x50 || next == 0x58))
-            {
-                eprintln!(
-                    "step_count={:>10} frame_step={:>6} frame_count={:>6} IN PC={:#06x}",
-                    core.step_count, frame_step, core.frame_count, core.machine.z80.pc
-                );
-            }
+        if core.frame_count == 1 && core.step_count == 29817 {
+            debug_print!(core.step_count, core.frame_count, frame_step, "$03EC: {:02x?}", &core.machine.z80.io.mem[0x03EC..=0x0410]);
         }
+
+        // DEBUG: ROM dump $0010-$002F
         #[cfg(feature = "debug_logging")]
-        if core.frame_count == 0 && core.step_count == 1 {
-            eprintln!(
-                "step_count={:>10} frame_step={:>6} frame_count={:>6} bytes at $0180: {:02x?}",
-                core.step_count,
-                frame_step,
-                core.frame_count,
-                &core.machine.z80.io.mem[0x0180..=0x01b0]
+        if core.frame_count == 1 && core.step_count == 29817 {
+            debug_print!(core.step_count, core.frame_count, frame_step, "$0010: {:02x?}", &core.machine.z80.io.mem[0x0010..=0x002F]);
+        }
+
+        // DEBUG: Trap $001F return from frame sync loop
+        #[cfg(feature = "debug_logging")]
+        if core.machine.z80.pc == 0x001F {
+            debug_print!(core.step_count, core.frame_count, frame_step,
+                "Frame sync RET SP={:#06x} $4FD4={:#04x} $4FEA={:#04x}",
+                core.machine.z80.sp,
+                core.machine.z80.io.mem[0x4FD4],
+                core.machine.z80.io.mem[0x4FEA],
             );
         }
+
+        // DEBUG: Trap entry to HALT loop at $001B
         #[cfg(feature = "debug_logging")]
-        if core.frame_count == 0 && core.step_count == 1 {
-            eprintln!("mem[$2000]: {:02x}", core.machine.z80.io.mem[0x2000]);
+        if core.machine.z80.pc == 0x001B {
+            debug_print!(core.step_count, core.frame_count, frame_step,
+                "HALT loop entry SP={:#06x}",
+                core.machine.z80.sp,
+            );
         }
+
+        // DEBUG: Stack at HALT loop entry
+        #[cfg(feature = "debug_logging")]
+        if core.machine.z80.pc == 0x001B {
+            debug_print!(core.step_count, core.frame_count, frame_step,
+                "HALT loop entry SP={:#06x} ret={:#06x} stack={:02x?}",
+                core.machine.z80.sp,
+                u16::from_le_bytes([core.machine.z80.io.mem[core.machine.z80.sp as usize], 
+                                    core.machine.z80.io.mem[core.machine.z80.sp as usize + 1]]),
+                &core.machine.z80.io.mem[core.machine.z80.sp as usize..core.machine.z80.sp as usize + 8],
+            );
+        }
+
+        // DEBUG: Per-second state dump
+        #[cfg(feature = "debug_logging")]
+        if core.frame_count % 60 == 0 && frame_step == 0 {
+            debug_print!(core.step_count, core.frame_count, frame_step,
+                "{} $4FCE={:#06x} $4FD0={:#06x} $4FD4={:#04x} $4FEA={:#04x} $4FF9={:#04x}",
+                disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc),
+                u16::from_le_bytes([core.machine.z80.io.mem[0x4FCE], core.machine.z80.io.mem[0x4FCF]]),
+                u16::from_le_bytes([core.machine.z80.io.mem[0x4FD0], core.machine.z80.io.mem[0x4FD1]]),
+                core.machine.z80.io.mem[0x4FD4],
+                core.machine.z80.io.mem[0x4FEA],
+                core.machine.z80.io.mem[0x4FF9],
+            );
+        }
+
         core.machine.z80.step();
         core.step_count += 1;
     }
 
-    core.irq_fired_this_frame = false;
     core.frame_count += 1;
 
     // eprintln!("retro_run(): finished");
