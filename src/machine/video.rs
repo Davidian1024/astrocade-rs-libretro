@@ -60,9 +60,7 @@ pub fn render_frame(
 
         // Apply any color events that happened before this scanline
         let scanline_start_cycle = y as u32 * cycles_per_scanline;
-        while event_idx < color_events.len() 
-            && color_events[event_idx].0 <= scanline_start_cycle 
-        {
+        while event_idx < color_events.len() && color_events[event_idx].0 <= scanline_start_cycle {
             let (_, reg, val) = color_events[event_idx];
             colors[reg] = val;
             event_idx += 1;

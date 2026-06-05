@@ -1,7 +1,7 @@
 use z80::{Z80, Z80_io};
 
-pub mod video;
 pub mod audio;
+pub mod video;
 
 pub struct IO {
     pub mem: [u8; 0x10000],
@@ -30,7 +30,8 @@ pub struct IO {
     pub funcgen_rotate_data: [u8; 4],  // accumulated data for rotate
     pub funcgen_expand_color: [u8; 2], // colors from xpand register
 
-    pub input: [u8; 4],  // handle state for players 1-4
+    pub input: [u8; 4], // handle state for players 1-4
+    pub knob: [u8; 4],
     pub keypad: [u8; 4],
 
     pub color_events: Vec<(u32, usize, u8)>, // (frame_step, register_index, value)
@@ -74,14 +75,16 @@ impl Z80_io for IO {
             0x00..=0x07 => {
                 let reg = (addr as u8) as usize;
                 self.colors[reg] = value;
-                self.color_events.push((self.current_frame_step, reg, value));
+                self.color_events
+                    .push((self.current_frame_step, reg, value));
             }
             0x09 => self.horcb = value,
             0x0A => self.verbl = value,
             0x0B => {
                 let reg = ((addr >> 8) & 0x07) as usize;
                 self.colors[reg] = value;
-                self.color_events.push((self.current_frame_step, reg, value));
+                self.color_events
+                    .push((self.current_frame_step, reg, value));
             }
             0x0C => {
                 self.magic = value;
@@ -92,10 +95,31 @@ impl Z80_io for IO {
             0x0D => self.infbk = value,
             0x0E => self.inlin = value, // was inmod
             0x0F => self.inmod = value, // was inlin
-            0x18..=0x1F => {
+            0x10..=0x17 => {
+                // Direct register write: port $10=reg0, $11=reg1, ... $17=reg7
+                let reg = ((addr as u8) - 0x10) as usize;
+                self.sound_reg[reg] = value;
+                #[cfg(feature = "debug_logging")]
+                if value != 0 && (reg == 5 || reg == 6 || reg == 7) {
+                    eprintln!("SOUND reg={} val={:#04x}", reg, value);
+                }
+            }
+            0x18 => {
+                // Block write: register index in high byte
+                let reg = ((addr >> 8) & 0x07) as usize;
+                self.sound_reg[reg] = value;
+                #[cfg(feature = "debug_logging")]
+                if value != 0 && (reg == 5 || reg == 6 || reg == 7) {
+                    eprintln!("SOUND reg={} val={:#04x}", reg, value);
+                }
+            }
+            0x19..=0x1F => {
                 let reg = (addr as u8) & 0x07;
                 self.sound_reg[reg as usize] = value;
-                // Port $19 is also the XPAND register for the function generator
+                #[cfg(feature = "debug_logging")]
+                if value != 0 && (reg == 5 || reg == 6 || reg == 7) {
+                    eprintln!("SOUND reg={} val={:#04x}", reg, value);
+                }
                 if addr as u8 == 0x19 {
                     self.xpand = value;
                     self.funcgen_expand_color[0] = value & 0x03;
@@ -109,7 +133,13 @@ impl Z80_io for IO {
     fn port_in(&self, addr: u16) -> u8 {
         let port = addr as u8;
         let result = match port {
-            0x00..=0x0F => 0x00,  // video/control registers, return 0
+            0x00..=0x07 => 0x00, // write-only video registers
+            0x00..=0x08 => 0x00, // intercept?  todo?
+            0x09..=0x0B => 0x00, // write-only video registers
+            0x0C => 0x00,        // write-only MAGIC
+            0x0D => 0x00,        // write-only INFBK
+            0x0E => 0x00,        // write-only INLIN
+            0x0F => 0x00,        // write-only INMOD
             0x10..=0x17 => {
                 let slot = (addr & 0x07) as u8;  // use low bits, not high byte
                 if slot & 0x04 != 0 {
@@ -122,12 +152,16 @@ impl Z80_io for IO {
                     if ctrl < 4 { self.input[ctrl] } else { 0x00 }
                 }
             }
-            0x18..=0x1F => 0x00,  // sound chip pot reads etc, stub
+            0x18..=0x1D => 0x00, // sound chip pot reads etc, stub
+            0x1C..=0x1F => {
+                let slot = (addr & 0x07) as u8;  // use low bits, not high byte
+                let ctrl = (slot & 0x03) as usize;
+                self.knob[ctrl]
+            }
             _ => 0xFF,
         };
         result
     }
-
 }
 
 impl IO {

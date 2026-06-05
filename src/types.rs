@@ -7,17 +7,29 @@ pub const RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: u32 = 18;
 pub const RETRO_ENVIRONMENT_SET_KEYBOARD_REPORTING: u32 = 26;
 pub const RETRO_ENVIRONMENT_GET_LOG_INTERFACE: u32 = 27;
 
-pub const RETRO_DEVICE_ID_JOYPAD_B:      u32 = 0;
-pub const RETRO_DEVICE_ID_JOYPAD_UP:     u32 = 4;
-pub const RETRO_DEVICE_ID_JOYPAD_DOWN:   u32 = 5;
-pub const RETRO_DEVICE_ID_JOYPAD_LEFT:   u32 = 6;
-pub const RETRO_DEVICE_ID_JOYPAD_RIGHT:  u32 = 7;
+pub const RETRO_DEVICE_ID_JOYPAD_B: u32 = 0;
+pub const RETRO_DEVICE_ID_JOYPAD_UP: u32 = 4;
+pub const RETRO_DEVICE_ID_JOYPAD_DOWN: u32 = 5;
+pub const RETRO_DEVICE_ID_JOYPAD_LEFT: u32 = 6;
+pub const RETRO_DEVICE_ID_JOYPAD_RIGHT: u32 = 7;
 
 pub const RETRO_DEVICE_KEYBOARD: u32 = 3;
+pub const RETRO_DEVICE_ID_KEYBOARD_ASTERISK: u32 = 42;
+pub const RETRO_DEVICE_ID_KEYBOARD_PLUS: u32 = 43;
+pub const RETRO_DEVICE_ID_KEYBOARD_COMMA: u32 = 44;
+pub const RETRO_DEVICE_ID_KEYBOARD_MINUS: u32 = 45;
+pub const RETRO_DEVICE_ID_KEYBOARD_PERIOD: u32 = 46;
+pub const RETRO_DEVICE_ID_KEYBOARD_SLASH: u32 = 47;
+pub const RETRO_DEVICE_ID_KEYBOARD_0: u32 = 48;
 pub const RETRO_DEVICE_ID_KEYBOARD_1: u32 = 49;
 pub const RETRO_DEVICE_ID_KEYBOARD_2: u32 = 50;
 pub const RETRO_DEVICE_ID_KEYBOARD_3: u32 = 51;
 pub const RETRO_DEVICE_ID_KEYBOARD_4: u32 = 52;
+pub const RETRO_DEVICE_ID_KEYBOARD_5: u32 = 53;
+pub const RETRO_DEVICE_ID_KEYBOARD_6: u32 = 54;
+pub const RETRO_DEVICE_ID_KEYBOARD_7: u32 = 55;
+pub const RETRO_DEVICE_ID_KEYBOARD_8: u32 = 56;
+pub const RETRO_DEVICE_ID_KEYBOARD_9: u32 = 57;
 pub const RETRO_DEVICE_ID_KEYBOARD_RETURN: u32 = 13;
 
 #[repr(C)]
@@ -67,8 +79,8 @@ pub struct RetroMessage {
 #[repr(u32)]
 pub enum RetroLogLevel {
     Debug = 0,
-    Info  = 1,
-    Warn  = 2,
+    Info = 1,
+    Warn = 2,
     Error = 3,
 }
 

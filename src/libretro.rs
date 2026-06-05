@@ -1,4 +1,7 @@
-use crate::{core::AstrocadeCore, debug_print, retro_log, types::RetroSystemInfo};
+use crate::{retro_log, types::RetroSystemInfo};
+
+#[cfg(feature = "debug_logging")]
+use crate::debug_print;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn retro_api_version() -> u32 {
@@ -49,19 +52,23 @@ pub extern "C" fn retro_set_environment(
     eprintln!("retro_set_environment(): started");
 
     let mut log_cb = crate::types::RetroLogCallback { log: None };
-    unsafe { cb(
-        crate::types::RETRO_ENVIRONMENT_GET_LOG_INTERFACE,
-        &mut log_cb as *mut crate::types::RetroLogCallback as *mut std::ffi::c_void,
-    ) };
+    unsafe {
+        cb(
+            crate::types::RETRO_ENVIRONMENT_GET_LOG_INTERFACE,
+            &mut log_cb as *mut crate::types::RetroLogCallback as *mut std::ffi::c_void,
+        )
+    };
     if log_cb.log.is_some() {
         *crate::LOG_CALLBACK.lock().unwrap() = log_cb.log;
     }
 
     let mut keyboard_reporting = true;
-    unsafe { cb(
-        crate::types::RETRO_ENVIRONMENT_SET_KEYBOARD_REPORTING,
-        &mut keyboard_reporting as *mut bool as *mut std::ffi::c_void,
-    ) };
+    unsafe {
+        cb(
+            crate::types::RETRO_ENVIRONMENT_SET_KEYBOARD_REPORTING,
+            &mut keyboard_reporting as *mut bool as *mut std::ffi::c_void,
+        )
+    };
 
     unsafe {
         crate::ENVIRONMENT_CALLBACK = Some(cb);
@@ -175,7 +182,12 @@ pub extern "C" fn retro_load_game(_game: *const crate::types::RetroGameInfo) -> 
             //     "retro_load_game(): failed to load BIOS from {}: {}",
             //     bios_path, e
             // );
-            retro_log!(crate::types::RetroLogLevel::Error, "Failed to load BIOS from {}: {}", bios_path, e);
+            retro_log!(
+                crate::types::RetroLogLevel::Error,
+                "Failed to load BIOS from {}: {}",
+                bios_path,
+                e
+            );
             set_message(&msg);
             return false;
         }
@@ -195,7 +207,11 @@ pub extern "C" fn retro_load_game(_game: *const crate::types::RetroGameInfo) -> 
     }
 
     // eprintln!("retro_load_game(): BIOS loaded from {}", bios_path);
-    retro_log!(crate::types::RetroLogLevel::Info, "BIOS loaded from {}", bios_path);
+    retro_log!(
+        crate::types::RetroLogLevel::Info,
+        "BIOS loaded from {}",
+        bios_path
+    );
     eprintln!("retro_load_game(): finished");
     true
 }
@@ -214,32 +230,46 @@ pub extern "C" fn retro_run() {
     }
     if let Some(state) = unsafe { crate::INPUT_STATE_CALLBACK } {
         for port in 0..4u32 {
-            let up = unsafe { state(port,1,0,4) != 0 };
-            let down = unsafe { state(port,1,0,5) != 0 };
-            let left = unsafe { state(port,1,0,6) != 0 };
-            let right = unsafe { state(port,1,0,7) != 0 };
-            let trigger = unsafe { state(port,1,0,0) != 0 };
+            let up = unsafe { state(port, 1, 0, 4) != 0 };
+            let down = unsafe { state(port, 1, 0, 5) != 0 };
+            let left = unsafe { state(port, 1, 0, 6) != 0 };
+            let right = unsafe { state(port, 1, 0, 7) != 0 };
+            let trigger = unsafe { state(port, 1, 0, 0) != 0 };
+            let right_stick_x: i16 = unsafe { state(port, 1, 1, 0) };
+            let _right_stick_y: i16 = unsafe { state(port, 1, 1, 1) };
 
-            core.machine.z80.io.input[port as usize] =
-                    (if up {0x01} else {0x00})
-                |   (if down {0x02} else {0x00})
-                |   (if left {0x04} else {0x00})
-                |   (if right {0x08} else {0x00})
-                |   (if trigger {0x10} else {0x00});                
+            core.machine.z80.io.input[port as usize] = (if up { 0x01 } else { 0x00 })
+                | (if down { 0x02 } else { 0x00 })
+                | (if left { 0x04 } else { 0x00 })
+                | (if right { 0x08 } else { 0x00 })
+                | (if trigger { 0x10 } else { 0x00 });
+
+            let knob_value = (((right_stick_x as i32) + 32768) / 256) as u8;
+            core.machine.z80.io.knob[port as usize] = knob_value;
         }
 
-        let key1  = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_1) } != 0;
-        let key2  = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_2) } != 0;
-        let key3  = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_3) } != 0;
-        let key4  = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_4) } != 0;
-        let enter = unsafe { state(0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_RETURN) } != 0;
+        let key_asterisk = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_ASTERISK, ) } != 0;
+        let key_plus = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_PLUS, ) } != 0;
+        let key_comma = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_COMMA, ) } != 0;
+        let key_minus = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_MINUS, ) } != 0;
+        let key_period = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_PERIOD, ) } != 0;
+        let key_slash = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_SLASH, ) } != 0;
+        let key_0 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_0, ) } != 0;
+        let key_1 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_1, ) } != 0;
+        let key_2 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_2, ) } != 0;
+        let key_3 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_3, ) } != 0;
+        let key_4 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_4, ) } != 0;
+        let key_5 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_5, ) } != 0;
+        let key_6 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_6, ) } != 0;
+        let key_7 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_7, ) } != 0;
+        let key_8 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_8, ) } != 0;
+        let key_9 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_9, ) } != 0;
+        let key_enter = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_RETURN, ) } != 0;
 
-        core.machine.z80.io.keypad[0] = if enter { 0x20 } else { 0x00 };
-        core.machine.z80.io.keypad[1] = if key3  { 0x10 } else { 0x00 };
-        core.machine.z80.io.keypad[2] = if key2  { 0x10 } else { 0x00 };
-        core.machine.z80.io.keypad[3] = (if key1 { 0x10 } else { 0x00 })
-                                    | (if key4 { 0x08 } else { 0x00 });
-
+        core.machine.z80.io.keypad[0] = (if key_enter  { 0x20 } else { 0x00 }) | (if key_plus { 0x10 } else { 0x00 }) | (if key_minus { 0x08 } else { 0x00 }) | (if key_asterisk { 0x04 } else { 0x00 }) | (if key_slash { 0x02 } else { 0x00 });
+        core.machine.z80.io.keypad[1] = (if key_period { 0x20 } else { 0x00 }) | (if key_3    { 0x10 } else { 0x00 }) | (if key_6     { 0x08 } else { 0x00 }) | (if key_9        { 0x04 } else { 0x00 });
+        core.machine.z80.io.keypad[2] = (if key_0      { 0x20 } else { 0x00 }) | (if key_2    { 0x10 } else { 0x00 }) | (if key_5     { 0x08 } else { 0x00 }) | (if key_8        { 0x04 } else { 0x00 });
+        core.machine.z80.io.keypad[3] = (if key_1 { 0x10 } else { 0x00 }) | (if key_4 { 0x08 } else { 0x00 }) | (if key_7 { 0x04 } else { 0x00 });
     }
 
     // Video
@@ -282,9 +312,12 @@ pub extern "C" fn retro_run() {
             &mut io.vibrato_clock,
             &mut io.noise_clock,
             &mut io.noise_state,
-            &mut io.a_count, &mut io.a_state,
-            &mut io.b_count, &mut io.b_state,
-            &mut io.c_count, &mut io.c_state,
+            &mut io.a_count,
+            &mut io.a_state,
+            &mut io.b_count,
+            &mut io.b_state,
+            &mut io.c_count,
+            &mut io.c_state,
             &io.bitswap,
             &mut mono_buffer,
         );
@@ -292,7 +325,7 @@ pub extern "C" fn retro_run() {
 
     // Interleave mono into stereo
     for i in 0..frames_per_frame {
-        audio_buffer[i * 2]     = mono_buffer[i]; // left
+        audio_buffer[i * 2] = mono_buffer[i]; // left
         audio_buffer[i * 2 + 1] = mono_buffer[i]; // right
     }
 
@@ -315,11 +348,20 @@ pub extern "C" fn retro_run() {
         // DEBUG: Per-second state dump
         #[cfg(feature = "debug_logging")]
         if core.frame_count % 60 == 0 && frame_step == 0 {
-            debug_print!(core.step_count, core.frame_count, frame_step,
+            debug_print!(
+                core.step_count,
+                core.frame_count,
+                frame_step,
                 "{} $4FCE={:#06x} $4FD0={:#06x} $4FD4={:#04x} $4FEA={:#04x} $4FF9={:#04x}",
                 disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc),
-                u16::from_le_bytes([core.machine.z80.io.mem[0x4FCE], core.machine.z80.io.mem[0x4FCF]]),
-                u16::from_le_bytes([core.machine.z80.io.mem[0x4FD0], core.machine.z80.io.mem[0x4FD1]]),
+                u16::from_le_bytes([
+                    core.machine.z80.io.mem[0x4FCE],
+                    core.machine.z80.io.mem[0x4FCF]
+                ]),
+                u16::from_le_bytes([
+                    core.machine.z80.io.mem[0x4FD0],
+                    core.machine.z80.io.mem[0x4FD1]
+                ]),
                 core.machine.z80.io.mem[0x4FD4],
                 core.machine.z80.io.mem[0x4FEA],
                 core.machine.z80.io.mem[0x4FF9],
@@ -330,7 +372,6 @@ pub extern "C" fn retro_run() {
         core.machine.z80.step();
         core.step_count += 1;
     }
-
 
     core.frame_count += 1;
 

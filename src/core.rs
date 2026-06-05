@@ -12,13 +12,8 @@ pub enum Waveform {
 
 pub struct AstrocadeCore {
     pub(crate) frame_count: u32,
-    pub(crate) phase: f32,
-    pub(crate) frequency: f32,
-    pub(crate) waveform: Waveform,
-    pub(crate) last_button: bool,
     pub(crate) machine: Machine,
     pub(crate) step_count: u64,
-    pub(crate) irq_pending_cycles: u32,
 }
 
 impl AstrocadeCore {
@@ -39,6 +34,7 @@ impl AstrocadeCore {
             funcgen_rotate_data: [0u8; 4],
             funcgen_expand_color: [0u8; 2],
             input: [0u8; 4],
+            knob: [0u8; 4],
             keypad: [0u8; 4],
             color_events: vec![],
             current_frame_step: 0,
@@ -55,7 +51,7 @@ impl AstrocadeCore {
             c_state: 0,
             bitswap: crate::machine::audio::build_bitswap(),
         };
-        let mut machine = Machine {
+        let machine = Machine {
             z80: Z80::<IO>::new(io),
             palette: video::build_palette(),
             frame_buffer: vec![0u32; 160 * 102],
@@ -63,13 +59,8 @@ impl AstrocadeCore {
         // machine.z80.sp = 0x4FCE;
         AstrocadeCore {
             frame_count: 0,
-            phase: 0.0,
-            frequency: 220.0,
-            waveform: Waveform::Square,
-            last_button: false,
             machine,
             step_count: 0,
-            irq_pending_cycles: 0,
         }
     }
 }

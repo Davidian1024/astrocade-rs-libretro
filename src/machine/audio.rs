@@ -4,9 +4,12 @@ pub fn generate_audio(
     vibrato_clock: &mut u16,
     noise_clock: &mut u8,
     noise_state: &mut u16,
-    a_count: &mut u8, a_state: &mut u8,
-    b_count: &mut u8, b_state: &mut u8,
-    c_count: &mut u8, c_state: &mut u8,
+    a_count: &mut u8,
+    a_state: &mut u8,
+    b_count: &mut u8,
+    b_state: &mut u8,
+    c_count: &mut u8,
+    c_state: &mut u8,
     bitswap: &[u8; 256],
     output: &mut [i16],
 ) {
@@ -16,9 +19,15 @@ pub fn generate_audio(
     while idx < sample_count {
         // Compute current sample
         let mut cur: i32 = 0;
-        if *a_state != 0 { cur += (sound_reg[6] & 0x0f) as i32; }
-        if *b_state != 0 { cur += (sound_reg[6] >> 4) as i32; }
-        if *c_state != 0 { cur += (sound_reg[5] & 0x0f) as i32; }
+        if *a_state != 0 {
+            cur += (sound_reg[6] & 0x0f) as i32;
+        }
+        if *b_state != 0 {
+            cur += (sound_reg[6] >> 4) as i32;
+        }
+        if *c_state != 0 {
+            cur += (sound_reg[5] & 0x0f) as i32;
+        }
 
         // Noise AM
         if (sound_reg[5] & 0x20) != 0 && (*noise_state & 0x4000) != 0 {
@@ -34,8 +43,8 @@ pub fn generate_audio(
         // Clock noise
         *noise_clock = noise_clock.wrapping_add(1);
         if *noise_clock >= 64 {
-            *noise_state = (*noise_state << 1) 
-                | (!(((*noise_state >> 14) ^ (*noise_state >> 13)) & 1) & 1);
+            *noise_state =
+                (*noise_state << 1) | (!(((*noise_state >> 14) ^ (*noise_state >> 13)) & 1) & 1);
             *noise_clock -= 64;
             *vibrato_clock = vibrato_clock.wrapping_add(1);
         }
@@ -52,9 +61,8 @@ pub fn generate_audio(
                 }
             } else {
                 // Noise mode
-                *master_count = master_count.wrapping_add(
-                    bitswap[(*noise_state >> 7) as usize & 0xff] & sound_reg[7]
-                );
+                *master_count = master_count
+                    .wrapping_add(bitswap[(*noise_state >> 7) as usize & 0xff] & sound_reg[7]);
             }
 
             // Clock tone A

@@ -29,7 +29,9 @@ pub static mut INPUT_STATE_CALLBACK: Option<unsafe extern "C" fn(u32, u32, u32, 
 
 pub static SYSTEM_DIRECTORY: Mutex<Option<String>> = Mutex::new(None);
 
-pub static LOG_CALLBACK: Mutex<Option<unsafe extern "C" fn(crate::types::RetroLogLevel, *const std::ffi::c_char)>> = Mutex::new(None);
+pub static LOG_CALLBACK: Mutex<
+    Option<unsafe extern "C" fn(crate::types::RetroLogLevel, *const std::ffi::c_char)>,
+> = Mutex::new(None);
 
 #[macro_export]
 macro_rules! retro_log {
