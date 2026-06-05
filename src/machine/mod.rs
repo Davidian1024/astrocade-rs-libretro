@@ -53,14 +53,16 @@ impl Z80_io for IO {
     fn port_out(&mut self, addr: u16, value: u8) {
         match addr as u8 {
             0x00..=0x07 => {
-                self.colors[addr as usize] = value;
-                self.color_events.push((self.current_frame_step, addr as usize, value));
+                let reg = (addr as u8) as usize;
+                self.colors[reg] = value;
+                self.color_events.push((self.current_frame_step, reg, value));
             }
             0x09 => self.horcb = value,
             0x0A => self.verbl = value,
             0x0B => {
                 let reg = ((addr >> 8) & 0x07) as usize;
                 self.colors[reg] = value;
+                self.color_events.push((self.current_frame_step, reg, value));
             }
             0x0C => {
                 self.magic = value;
@@ -134,7 +136,7 @@ impl IO {
                     | (((self.funcgen_rotate_data[2] >> shift) & 3) << 4)
                     | (((self.funcgen_rotate_data[1] >> shift) & 3) << 2)
                     | (((self.funcgen_rotate_data[0] >> shift) & 3) << 0);
-                self.funcgen_rotate_count += 1;
+                self.funcgen_rotate_count = self.funcgen_rotate_count.wrapping_add(1);
             }
         } else {
             // Shift

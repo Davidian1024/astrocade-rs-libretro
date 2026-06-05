@@ -27,16 +27,26 @@ pub fn build_palette() -> Box<[u32; 512]> {
 
 pub fn render_frame(
     vram: &[u8; 0x10000],
-    colors: &[u8; 8],
+    initial_colors: &[u8; 8],
+    color_events: &[(u32, usize, u8)],
     horcb: u8,
     verbl: u8,
+    cycles_per_frame: u32,
     palette: &[u32; 512],
     output: &mut [u32],
 ) {
     let screen_lines = (verbl / 2) as usize;
     let screen_lines = screen_lines.min(102);
-
     let boundary_pixel = (horcb as usize & 0x3f) * 4;
+
+    // Start with the initial color register state
+    let mut colors = *initial_colors;
+
+    // Sort events by frame_step (should already be in order but be safe)
+    // We'll walk through them as we render each scanline
+
+    let cycles_per_scanline = cycles_per_frame / screen_lines.max(1) as u32;
+    let mut event_idx = 0;
 
     for y in 0..102usize {
         let line_start = y * 160;
@@ -46,6 +56,16 @@ pub fn render_frame(
                 output[line_start + x] = 0;
             }
             continue;
+        }
+
+        // Apply any color events that happened before this scanline
+        let scanline_start_cycle = y as u32 * cycles_per_scanline;
+        while event_idx < color_events.len() 
+            && color_events[event_idx].0 <= scanline_start_cycle 
+        {
+            let (_, reg, val) = color_events[event_idx];
+            colors[reg] = val;
+            event_idx += 1;
         }
 
         let fb_offset = 0x4000 + y * 40;

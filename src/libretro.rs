@@ -247,8 +247,10 @@ pub extern "C" fn retro_run() {
     crate::machine::video::render_frame(
         &core.machine.z80.io.mem,
         &core.machine.z80.io.colors,
+        &core.machine.z80.io.color_events,
         core.machine.z80.io.horcb,
         core.machine.z80.io.verbl,
+        CYCLES_PER_FRAME,
         &core.machine.palette,
         &mut core.machine.frame_buffer,
     );
@@ -276,38 +278,14 @@ pub extern "C" fn retro_run() {
 
     // Machine
     const CYCLES_PER_FRAME: u32 = 1_789_000 / 60;
+    const CYCLES_PER_SCANLINE: u32 = CYCLES_PER_FRAME / 95;
 
-    core.machine.z80.io.color_events.clear();
     for frame_step in 0..CYCLES_PER_FRAME {
-        let pc = core.machine.z80.pc as usize;
-        let op = core.machine.z80.io.mem[pc];
-
-        if op == 0xFB {
-            core.irq_pending_cycles = 100;
-        }
-
-        if core.irq_pending_cycles > 0 {
-            core.irq_pending_cycles -= 1;
-            if core.irq_pending_cycles == 0 {
-                if core.machine.z80.halted {
-                    core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
-                } else {
-                    // Not halted yet, keep waiting
-                    core.irq_pending_cycles = 10;
-                }
+        // Fire interrupt once per frame when CPU is halted and interrupts enabled
+        if frame_step == CYCLES_PER_SCANLINE * (core.machine.z80.io.inlin as u32 / 2) {
+            if core.machine.z80.iff1 || core.machine.z80.halted {
+                core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
             }
-        }
-
-        // DEBUG: Stack at HALT loop entry
-        #[cfg(feature = "debug_logging")]
-        if core.machine.z80.pc == 0x001B {
-            debug_print!(core.step_count, core.frame_count, frame_step,
-                "HALT loop entry SP={:#06x} ret={:#06x} stack={:02x?}",
-                core.machine.z80.sp,
-                u16::from_le_bytes([core.machine.z80.io.mem[core.machine.z80.sp as usize], 
-                                    core.machine.z80.io.mem[core.machine.z80.sp as usize + 1]]),
-                &core.machine.z80.io.mem[core.machine.z80.sp as usize..core.machine.z80.sp as usize + 8],
-            );
         }
 
         // DEBUG: Per-second state dump
@@ -328,6 +306,7 @@ pub extern "C" fn retro_run() {
         core.machine.z80.step();
         core.step_count += 1;
     }
+
 
     core.frame_count += 1;
 
