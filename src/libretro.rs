@@ -267,10 +267,34 @@ pub extern "C" fn retro_run() {
     }
 
     // Audio
-
     let frames_per_frame = 48000 / 60;
-    let total_samples = frames_per_frame * 2;
-    let audio_buffer: Vec<i16> = vec![0i16; total_samples];
+    let total_samples = frames_per_frame * 2; // stereo
+    let mut audio_buffer = vec![0i16; total_samples];
+
+    // Generate mono audio into every other sample, copy to both channels
+    let mut mono_buffer = vec![0i16; frames_per_frame];
+
+    {
+        let io = &mut core.machine.z80.io;
+        crate::machine::audio::generate_audio(
+            &io.sound_reg,
+            &mut io.master_count,
+            &mut io.vibrato_clock,
+            &mut io.noise_clock,
+            &mut io.noise_state,
+            &mut io.a_count, &mut io.a_state,
+            &mut io.b_count, &mut io.b_state,
+            &mut io.c_count, &mut io.c_state,
+            &io.bitswap,
+            &mut mono_buffer,
+        );
+    }
+
+    // Interleave mono into stereo
+    for i in 0..frames_per_frame {
+        audio_buffer[i * 2]     = mono_buffer[i]; // left
+        audio_buffer[i * 2 + 1] = mono_buffer[i]; // right
+    }
 
     if let Some(cb) = unsafe { crate::AUDIO_SAMPLE_BATCH_CALLBACK } {
         unsafe { cb(audio_buffer.as_ptr(), frames_per_frame as usize) };
