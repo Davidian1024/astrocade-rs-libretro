@@ -42,6 +42,18 @@ impl AstrocadeCore {
             keypad: [0u8; 4],
             color_events: vec![],
             current_frame_step: 0,
+            sound_reg: [0u8; 8],
+            master_count: 0,
+            vibrato_clock: 0,
+            noise_clock: 0,
+            noise_state: 0,
+            a_count: 0,
+            a_state: 0,
+            b_count: 0,
+            b_state: 0,
+            c_count: 0,
+            c_state: 0,
+            bitswap: crate::machine::audio::build_bitswap(),
         };
         let mut machine = Machine {
             z80: Z80::<IO>::new(io),

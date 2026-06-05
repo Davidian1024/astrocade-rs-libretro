@@ -1,6 +1,7 @@
 use z80::{Z80, Z80_io};
 
 pub mod video;
+pub mod audio;
 
 pub struct IO {
     pub mem: [u8; 0x10000],
@@ -34,6 +35,24 @@ pub struct IO {
 
     pub color_events: Vec<(u32, usize, u8)>, // (frame_step, register_index, value)
     pub current_frame_step: u32,
+
+    // Sound chip registers
+    pub sound_reg: [u8; 8],
+
+    // Oscillator state
+    pub master_count: u8,
+    pub vibrato_clock: u16,
+    pub noise_clock: u8,
+    pub noise_state: u16,
+    pub a_count: u8,
+    pub a_state: u8,
+    pub b_count: u8,
+    pub b_state: u8,
+    pub c_count: u8,
+    pub c_state: u8,
+
+    // Bitswap table for noise
+    pub bitswap: [u8; 256],
 }
 
 impl Z80_io for IO {
@@ -73,10 +92,15 @@ impl Z80_io for IO {
             0x0D => self.infbk = value,
             0x0E => self.inlin = value, // was inmod
             0x0F => self.inmod = value, // was inlin
-            0x19 => {
-                self.xpand = value;
-                self.funcgen_expand_color[0] = value & 0x03;
-                self.funcgen_expand_color[1] = (value >> 2) & 0x03;
+            0x18..=0x1F => {
+                let reg = (addr as u8) & 0x07;
+                self.sound_reg[reg as usize] = value;
+                // Port $19 is also the XPAND register for the function generator
+                if addr as u8 == 0x19 {
+                    self.xpand = value;
+                    self.funcgen_expand_color[0] = value & 0x03;
+                    self.funcgen_expand_color[1] = (value >> 2) & 0x03;
+                }
             }
             _ => {}
         }
