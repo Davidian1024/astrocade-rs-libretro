@@ -40,6 +40,8 @@ pub const RETRO_DEVICE_ID_KEYBOARD_8: u32 = 56;
 pub const RETRO_DEVICE_ID_KEYBOARD_9: u32 = 57;
 pub const RETRO_DEVICE_ID_KEYBOARD_RETURN: u32 = 13;
 
+pub const RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: u32 = 11;
+
 #[repr(C)]
 pub struct RetroSystemInfo {
     pub library_name: *const std::ffi::c_char,
@@ -95,4 +97,13 @@ pub enum RetroLogLevel {
 #[repr(C)]
 pub struct RetroLogCallback {
     pub log: Option<unsafe extern "C" fn(level: RetroLogLevel, fmt: *const std::ffi::c_char)>,
+}
+
+#[repr(C)]
+pub struct RetroInputDescriptor {
+    pub port: u32,
+    pub device: u32,
+    pub index: u32,
+    pub id: u32,
+    pub description: *const std::ffi::c_char,
 }

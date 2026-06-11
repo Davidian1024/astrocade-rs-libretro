@@ -1,4 +1,4 @@
-use crate::{retro_log, types::{RETRO_DEVICE_ANALOG, RETRO_DEVICE_ID_ANALOG_X, RETRO_DEVICE_ID_ANALOG_Y, RETRO_DEVICE_ID_JOYPAD_R2, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RetroSystemInfo}};
+use crate::{retro_log, types::{RETRO_DEVICE_ANALOG, RETRO_DEVICE_ID_ANALOG_X, RETRO_DEVICE_ID_ANALOG_Y, RETRO_DEVICE_ID_JOYPAD_R2, RETRO_DEVICE_ID_KEYBOARD_0, RETRO_DEVICE_ID_KEYBOARD_1, RETRO_DEVICE_ID_KEYBOARD_2, RETRO_DEVICE_ID_KEYBOARD_3, RETRO_DEVICE_ID_KEYBOARD_4, RETRO_DEVICE_ID_KEYBOARD_5, RETRO_DEVICE_ID_KEYBOARD_6, RETRO_DEVICE_ID_KEYBOARD_7, RETRO_DEVICE_ID_KEYBOARD_8, RETRO_DEVICE_ID_KEYBOARD_9, RETRO_DEVICE_ID_KEYBOARD_ASTERISK, RETRO_DEVICE_ID_KEYBOARD_COMMA, RETRO_DEVICE_ID_KEYBOARD_MINUS, RETRO_DEVICE_ID_KEYBOARD_PERIOD, RETRO_DEVICE_ID_KEYBOARD_PLUS, RETRO_DEVICE_ID_KEYBOARD_RETURN, RETRO_DEVICE_ID_KEYBOARD_SLASH, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_KEYBOARD, RETRO_ENVIRONMENT_GET_LOG_INTERFACE, RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, RETRO_ENVIRONMENT_SET_KEYBOARD_REPORTING, RETRO_ENVIRONMENT_SET_MESSAGE, RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, RETRO_PIXEL_FORMAT_XRGB8888, RetroGameInfo, RetroInputDescriptor, RetroLogCallback, RetroLogLevel, RetroMessage, RetroSystemAvInfo, RetroSystemInfo}};
 
 #[cfg(feature = "debug_logging")]
 use crate::debug_print;
@@ -31,7 +31,7 @@ pub extern "C" fn retro_get_system_info(info: *mut RetroSystemInfo) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn retro_get_system_av_info(info: *mut crate::types::RetroSystemAvInfo) {
+pub extern "C" fn retro_get_system_av_info(info: *mut RetroSystemAvInfo) {
     eprintln!("retro_get_system_av_info(): started");
     unsafe {
         (*info).geometry.base_width = 160;
@@ -51,11 +51,11 @@ pub extern "C" fn retro_set_environment(
 ) {
     eprintln!("retro_set_environment(): started");
 
-    let mut log_cb = crate::types::RetroLogCallback { log: None };
+    let mut log_cb = RetroLogCallback { log: None };
     unsafe {
         cb(
-            crate::types::RETRO_ENVIRONMENT_GET_LOG_INTERFACE,
-            &mut log_cb as *mut crate::types::RetroLogCallback as *mut std::ffi::c_void,
+            RETRO_ENVIRONMENT_GET_LOG_INTERFACE,
+            &mut log_cb as *mut RetroLogCallback as *mut std::ffi::c_void,
         )
     };
     if log_cb.log.is_some() {
@@ -65,7 +65,7 @@ pub extern "C" fn retro_set_environment(
     let mut keyboard_reporting = true;
     unsafe {
         cb(
-            crate::types::RETRO_ENVIRONMENT_SET_KEYBOARD_REPORTING,
+            RETRO_ENVIRONMENT_SET_KEYBOARD_REPORTING,
             &mut keyboard_reporting as *mut bool as *mut std::ffi::c_void,
         )
     };
@@ -75,7 +75,7 @@ pub extern "C" fn retro_set_environment(
 
         let mut system_dir_ptr: *const std::ffi::c_char = std::ptr::null();
         cb(
-            crate::types::RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY,
+            RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY,
             &mut system_dir_ptr as *mut *const std::ffi::c_char as *mut std::ffi::c_void,
         );
         if !system_dir_ptr.is_null() {
@@ -87,7 +87,7 @@ pub extern "C" fn retro_set_environment(
 
         let mut supports_no_game = true;
         cb(
-            crate::types::RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME,
+            RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME,
             &mut supports_no_game as *mut bool as *mut std::ffi::c_void,
         );
     }
@@ -148,9 +148,9 @@ pub extern "C" fn retro_init() {
     eprintln!("retro_init(): started");
     unsafe {
         if let Some(cb) = crate::ENVIRONMENT_CALLBACK {
-            let mut fmt = crate::types::RETRO_PIXEL_FORMAT_XRGB8888;
+            let mut fmt = RETRO_PIXEL_FORMAT_XRGB8888;
             cb(
-                crate::types::RETRO_ENVIRONMENT_SET_PIXEL_FORMAT,
+                RETRO_ENVIRONMENT_SET_PIXEL_FORMAT,
                 &mut fmt as *mut u32 as *mut std::ffi::c_void,
             );
         }
@@ -162,7 +162,7 @@ pub extern "C" fn retro_init() {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn retro_load_game(game: *const crate::types::RetroGameInfo) -> bool {
+pub extern "C" fn retro_load_game(game: *const RetroGameInfo) -> bool {
     eprintln!("retro_load_game(): started");
 
     let system_dir = match crate::SYSTEM_DIRECTORY.lock().unwrap().clone() {
@@ -173,20 +173,58 @@ pub extern "C" fn retro_load_game(game: *const crate::types::RetroGameInfo) -> b
         }
     };
 
+    if let Some(env) = unsafe { crate::ENVIRONMENT_CALLBACK } {
+        let desc = [
+            // Port 0
+            RetroInputDescriptor { port: 0, device: 1, index: 0, id: 4,  description: c"Up".as_ptr() },
+            RetroInputDescriptor { port: 0, device: 1, index: 0, id: 5,  description: c"Down".as_ptr() },
+            RetroInputDescriptor { port: 0, device: 1, index: 0, id: 6,  description: c"Left".as_ptr() },
+            RetroInputDescriptor { port: 0, device: 1, index: 0, id: 7,  description: c"Right".as_ptr() },
+            RetroInputDescriptor { port: 0, device: 1, index: 0, id: 13, description: c"Trigger".as_ptr() },
+            RetroInputDescriptor { port: 0, device: 5, index: 1, id: 1,  description: c"Knob".as_ptr() },
+            // Port 1
+            RetroInputDescriptor { port: 1, device: 1, index: 0, id: 4,  description: c"Up".as_ptr() },
+            RetroInputDescriptor { port: 1, device: 1, index: 0, id: 5,  description: c"Down".as_ptr() },
+            RetroInputDescriptor { port: 1, device: 1, index: 0, id: 6,  description: c"Left".as_ptr() },
+            RetroInputDescriptor { port: 1, device: 1, index: 0, id: 7,  description: c"Right".as_ptr() },
+            RetroInputDescriptor { port: 1, device: 1, index: 0, id: 13, description: c"Trigger".as_ptr() },
+            RetroInputDescriptor { port: 1, device: 5, index: 1, id: 1,  description: c"Knob".as_ptr() },
+            // Ports 2
+            RetroInputDescriptor { port: 2, device: 1, index: 0, id: 4,  description: c"Up".as_ptr() },
+            RetroInputDescriptor { port: 2, device: 1, index: 0, id: 5,  description: c"Down".as_ptr() },
+            RetroInputDescriptor { port: 2, device: 1, index: 0, id: 6,  description: c"Left".as_ptr() },
+            RetroInputDescriptor { port: 2, device: 1, index: 0, id: 7,  description: c"Right".as_ptr() },
+            RetroInputDescriptor { port: 2, device: 1, index: 0, id: 13, description: c"Trigger".as_ptr() },
+            RetroInputDescriptor { port: 2, device: 5, index: 1, id: 1,  description: c"Knob".as_ptr() },
+            // Ports 3
+            RetroInputDescriptor { port: 3, device: 1, index: 0, id: 4,  description: c"Up".as_ptr() },
+            RetroInputDescriptor { port: 3, device: 1, index: 0, id: 5,  description: c"Down".as_ptr() },
+            RetroInputDescriptor { port: 3, device: 1, index: 0, id: 6,  description: c"Left".as_ptr() },
+            RetroInputDescriptor { port: 3, device: 1, index: 0, id: 7,  description: c"Right".as_ptr() },
+            RetroInputDescriptor { port: 3, device: 1, index: 0, id: 13, description: c"Trigger".as_ptr() },
+            RetroInputDescriptor { port: 3, device: 5, index: 1, id: 1,  description: c"Knob".as_ptr() },
+            // Null terminator
+            RetroInputDescriptor { port: 0, device: 0, index: 0, id: 0,  description: std::ptr::null() },
+        ];
+        unsafe {
+            env(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, desc.as_ptr() as *mut std::ffi::c_void);
+        }
+    }
+
     // Load BIOS
     let bios_path = format!("{}/astrocade/bioswhit.bin", system_dir);
     let bios_data = match std::fs::read(&bios_path) {
         Ok(data) => data,
         Err(e) => {
             let msg = format!("astrocade: BIOS not found.");
-            retro_log!(crate::types::RetroLogLevel::Error,
+            retro_log!(RetroLogLevel::Error,
                 "Failed to load BIOS from {}: {}", bios_path, e);
             set_message(&msg);
             return false;
         }
     };
     if bios_data.len() != 0x2000 {
-        retro_log!(crate::types::RetroLogLevel::Error,
+        retro_log!(RetroLogLevel::Error,
             "BIOS wrong size (expected 8192, got {})", bios_data.len());
         return false;
     }
@@ -209,14 +247,14 @@ pub extern "C" fn retro_load_game(game: *const crate::types::RetroGameInfo) -> b
                         data as *const u8, cart_size);
                     core.machine.z80.io.mem[0x2000..0x2000 + cart_size]
                         .copy_from_slice(cart_slice);
-                    retro_log!(crate::types::RetroLogLevel::Info,
+                    retro_log!(RetroLogLevel::Info,
                         "Cart loaded: {} bytes", cart_size);
                 }
             }
         }
     }
 
-    retro_log!(crate::types::RetroLogLevel::Info, "BIOS loaded from {}", bios_path);
+    retro_log!(RetroLogLevel::Info, "BIOS loaded from {}", bios_path);
     eprintln!("retro_load_game(): finished");
     true
 }
@@ -235,13 +273,17 @@ pub extern "C" fn retro_run() {
     }
     if let Some(state) = unsafe { crate::INPUT_STATE_CALLBACK } {
         for port in 0..4u32 {
-            let up = unsafe { state(port, 1, 0, 4) != 0 };
-            let down = unsafe { state(port, 1, 0, 5) != 0 };
-            let left = unsafe { state(port, 1, 0, 6) != 0 };
-            let right = unsafe { state(port, 1, 0, 7) != 0 };
             let trigger = unsafe { state(port, 1, 0, RETRO_DEVICE_ID_JOYPAD_R2) != 0 };
+
+            let left_stick_x: i16 = unsafe { state(port, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X) };
+            let left_stick_y: i16 = unsafe { state(port, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_Y) };
             let _right_stick_x: i16 = unsafe { state(port, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_X) };
             let right_stick_y: i16 = unsafe { state(port, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_Y) };
+
+            let up = (left_stick_y < -10000) || unsafe { state(port, 1, 0, 4) != 0 };
+            let down = (left_stick_y > 10000) || unsafe { state(port, 1, 0, 5) != 0 };
+            let left = (left_stick_x < -10000) || unsafe { state(port, 1, 0, 6) != 0 };
+            let right = (left_stick_x > 10000) || unsafe { state(port, 1, 0, 7) != 0 };
 
             core.machine.z80.io.input[port as usize] = (if up { 0x01 } else { 0x00 })
                 | (if down { 0x02 } else { 0x00 })
@@ -253,23 +295,23 @@ pub extern "C" fn retro_run() {
             core.machine.z80.io.knob[port as usize] = knob_value;
         }
 
-        let key_asterisk = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_ASTERISK, ) } != 0;
-        let key_plus = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_PLUS, ) } != 0;
-        let key_comma = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_COMMA, ) } != 0;
-        let key_minus = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_MINUS, ) } != 0;
-        let key_period = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_PERIOD, ) } != 0;
-        let key_slash = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_SLASH, ) } != 0;
-        let key_0 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_0, ) } != 0;
-        let key_1 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_1, ) } != 0;
-        let key_2 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_2, ) } != 0;
-        let key_3 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_3, ) } != 0;
-        let key_4 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_4, ) } != 0;
-        let key_5 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_5, ) } != 0;
-        let key_6 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_6, ) } != 0;
-        let key_7 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_7, ) } != 0;
-        let key_8 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_8, ) } != 0;
-        let key_9 = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_9, ) } != 0;
-        let key_enter = unsafe { state( 0, crate::types::RETRO_DEVICE_KEYBOARD, 0, crate::types::RETRO_DEVICE_ID_KEYBOARD_RETURN, ) } != 0;
+        let key_asterisk = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_ASTERISK, ) } != 0;
+        let key_plus = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_PLUS, ) } != 0;
+        let key_comma = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_COMMA, ) } != 0;
+        let key_minus = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_MINUS, ) } != 0;
+        let key_period = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_PERIOD, ) } != 0;
+        let key_slash = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_SLASH, ) } != 0;
+        let key_0 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_0, ) } != 0;
+        let key_1 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_1, ) } != 0;
+        let key_2 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_2, ) } != 0;
+        let key_3 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_3, ) } != 0;
+        let key_4 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_4, ) } != 0;
+        let key_5 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_5, ) } != 0;
+        let key_6 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_6, ) } != 0;
+        let key_7 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_7, ) } != 0;
+        let key_8 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_8, ) } != 0;
+        let key_9 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_9, ) } != 0;
+        let key_enter = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_RETURN, ) } != 0;
 
         core.machine.z80.io.keypad[0] = (if key_enter  { 0x20 } else { 0x00 }) | (if key_plus { 0x10 } else { 0x00 }) | (if key_minus { 0x08 } else { 0x00 }) | (if key_asterisk { 0x04 } else { 0x00 }) | (if key_slash { 0x02 } else { 0x00 });
         core.machine.z80.io.keypad[1] = (if key_period { 0x20 } else { 0x00 }) | (if key_3    { 0x10 } else { 0x00 }) | (if key_6     { 0x08 } else { 0x00 }) | (if key_9        { 0x04 } else { 0x00 });
@@ -528,7 +570,7 @@ pub extern "C" fn retro_reset() {
 #[unsafe(no_mangle)]
 pub extern "C" fn retro_load_game_special(
     _game_type: u32,
-    _info: *const crate::types::RetroGameInfo,
+    _info: *const RetroGameInfo,
     _num_info: usize,
 ) -> bool {
     eprintln!("retro_load_game_special(): started");
@@ -540,13 +582,13 @@ fn set_message(msg: &str) {
     unsafe {
         if let Some(cb) = crate::ENVIRONMENT_CALLBACK {
             let c_msg = std::ffi::CString::new(msg).unwrap();
-            let mut retro_msg = crate::types::RetroMessage {
+            let mut retro_msg = RetroMessage {
                 msg: c_msg.as_ptr(),
                 frames: 600,
             };
             cb(
-                crate::types::RETRO_ENVIRONMENT_SET_MESSAGE,
-                &mut retro_msg as *mut crate::types::RetroMessage as *mut std::ffi::c_void,
+                RETRO_ENVIRONMENT_SET_MESSAGE,
+                &mut retro_msg as *mut RetroMessage as *mut std::ffi::c_void,
             );
         }
     }
