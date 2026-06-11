@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use crate::machine::IO;
 use z80::Z80;
 
@@ -27,6 +29,7 @@ impl AstrocadeCore {
             funcgen_rotate_count: 0,
             funcgen_rotate_data: [0u8; 4],
             funcgen_expand_color: [0u8; 2],
+            funcgen_intercept: Cell::new(0),
             input: [0u8; 4],
             knob: [0u8; 4],
             keypad: [0u8; 4],

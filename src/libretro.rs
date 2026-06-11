@@ -1,4 +1,4 @@
-use crate::{retro_log, types::RetroSystemInfo};
+use crate::{retro_log, types::{RETRO_DEVICE_ANALOG, RETRO_DEVICE_ID_ANALOG_X, RETRO_DEVICE_ID_ANALOG_Y, RETRO_DEVICE_ID_JOYPAD_R2, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RetroSystemInfo}};
 
 #[cfg(feature = "debug_logging")]
 use crate::debug_print;
@@ -239,9 +239,9 @@ pub extern "C" fn retro_run() {
             let down = unsafe { state(port, 1, 0, 5) != 0 };
             let left = unsafe { state(port, 1, 0, 6) != 0 };
             let right = unsafe { state(port, 1, 0, 7) != 0 };
-            let trigger = unsafe { state(port, 1, 0, 0) != 0 };
-            let right_stick_x: i16 = unsafe { state(port, 1, 1, 0) };
-            let _right_stick_y: i16 = unsafe { state(port, 1, 1, 1) };
+            let trigger = unsafe { state(port, 1, 0, RETRO_DEVICE_ID_JOYPAD_R2) != 0 };
+            let _right_stick_x: i16 = unsafe { state(port, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_X) };
+            let right_stick_y: i16 = unsafe { state(port, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_Y) };
 
             core.machine.z80.io.input[port as usize] = (if up { 0x01 } else { 0x00 })
                 | (if down { 0x02 } else { 0x00 })
@@ -249,7 +249,7 @@ pub extern "C" fn retro_run() {
                 | (if right { 0x08 } else { 0x00 })
                 | (if trigger { 0x10 } else { 0x00 });
 
-            let knob_value = (((right_stick_x as i32) + 32768) / 256) as u8;
+            let knob_value = 255 - (((right_stick_y as i32) + 32768) / 256) as u8 ;
             core.machine.z80.io.knob[port as usize] = knob_value;
         }
 

@@ -1,4 +1,5 @@
 use z80::{Z80, Z80_io};
+use std::cell::Cell;
 
 pub mod audio;
 pub mod video;
@@ -29,6 +30,7 @@ pub struct IO {
     pub funcgen_rotate_count: u8,      // counter for rotate mode
     pub funcgen_rotate_data: [u8; 4],  // accumulated data for rotate
     pub funcgen_expand_color: [u8; 2], // colors from xpand register
+    pub funcgen_intercept: Cell<u8>,
 
     pub input: [u8; 4], // handle state for players 1-4
     pub knob: [u8; 4],
@@ -139,7 +141,11 @@ impl Z80_io for IO {
         let port = addr as u8;
         let result = match port {
             0x00..=0x07 => 0x00, // write-only video registers
-            0x00..=0x08 => 0x00, // intercept?  todo?
+            0x08 => {
+                let val = self.funcgen_intercept.get();
+                self.funcgen_intercept.set(val & 0x0f); // clear latched bits[7:4] on read
+                val
+            }
             0x09..=0x0B => 0x00, // write-only video registers
             0x0C => 0x00,        // write-only MAGIC
             0x0D => 0x00,        // write-only INFBK
@@ -220,11 +226,23 @@ impl IO {
         let fb_addr = 0x4000 + offset;
         if ctrl & 0x30 != 0 {
             let old_data = self.mem[fb_addr];
+            let incoming = data;
             if ctrl & 0x10 != 0 {
                 data |= old_data; // OR
             } else if ctrl & 0x20 != 0 {
                 data ^= old_data; // XOR
             }
+            // Intercept: set a bit for each 2-bit pixel where both incoming and existing are non-zero
+            let mut intercept = 0u8;
+            for pix in 0..4u8 {
+                let shift = pix * 2;
+                if ((incoming >> shift) & 0x03) != 0 && ((old_data >> shift) & 0x03) != 0 {
+                    intercept |= 1 << pix;
+                }
+            }
+            // bits[3:0] = last write; bits[7:4] = latched (OR in, cleared on read)
+            let current = self.funcgen_intercept.get();
+            self.funcgen_intercept.set((current & 0xf0) | intercept | (intercept << 4));
         }
 
         // Write result to framebuffer
