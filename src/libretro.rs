@@ -23,7 +23,7 @@ pub extern "C" fn retro_get_system_info(info: *mut RetroSystemInfo) {
             "\0"
         )
         .as_ptr() as *const std::ffi::c_char;
-        (*info).valid_extensions = c"".as_ptr();
+        (*info).valid_extensions = c"bin".as_ptr();
         (*info).need_fullpath = false;
         (*info).block_extract = false;
     }
@@ -162,7 +162,7 @@ pub extern "C" fn retro_init() {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn retro_load_game(_game: *const crate::types::RetroGameInfo) -> bool {
+pub extern "C" fn retro_load_game(game: *const crate::types::RetroGameInfo) -> bool {
     eprintln!("retro_load_game(): started");
 
     let system_dir = match crate::SYSTEM_DIRECTORY.lock().unwrap().clone() {
@@ -173,45 +173,50 @@ pub extern "C" fn retro_load_game(_game: *const crate::types::RetroGameInfo) -> 
         }
     };
 
+    // Load BIOS
     let bios_path = format!("{}/astrocade/bioswhit.bin", system_dir);
     let bios_data = match std::fs::read(&bios_path) {
         Ok(data) => data,
         Err(e) => {
             let msg = format!("astrocade: BIOS not found.");
-            // eprintln!(
-            //     "retro_load_game(): failed to load BIOS from {}: {}",
-            //     bios_path, e
-            // );
-            retro_log!(
-                crate::types::RetroLogLevel::Error,
-                "Failed to load BIOS from {}: {}",
-                bios_path,
-                e
-            );
+            retro_log!(crate::types::RetroLogLevel::Error,
+                "Failed to load BIOS from {}: {}", bios_path, e);
             set_message(&msg);
             return false;
         }
     };
     if bios_data.len() != 0x2000 {
-        eprintln!(
-            "retro_load_game(): BIOS is wrong size (expected 8192, got {})",
-            bios_data.len()
-        );
+        retro_log!(crate::types::RetroLogLevel::Error,
+            "BIOS wrong size (expected 8192, got {})", bios_data.len());
         return false;
     }
 
     {
         let mut core = crate::CORE.lock().unwrap();
         let core = core.as_mut().unwrap();
+
+        // Load BIOS into $0000-$1FFF
         core.machine.z80.io.mem[0x0000..0x2000].copy_from_slice(&bios_data);
+
+        // Load cart if present
+        if !game.is_null() {
+            unsafe {
+                let size = (*game).size;
+                let data = (*game).data;
+                if size > 0 && !data.is_null() {
+                    let cart_size = size.min(0x2000);
+                    let cart_slice = std::slice::from_raw_parts(
+                        data as *const u8, cart_size);
+                    core.machine.z80.io.mem[0x2000..0x2000 + cart_size]
+                        .copy_from_slice(cart_slice);
+                    retro_log!(crate::types::RetroLogLevel::Info,
+                        "Cart loaded: {} bytes", cart_size);
+                }
+            }
+        }
     }
 
-    // eprintln!("retro_load_game(): BIOS loaded from {}", bios_path);
-    retro_log!(
-        crate::types::RetroLogLevel::Info,
-        "BIOS loaded from {}",
-        bios_path
-    );
+    retro_log!(crate::types::RetroLogLevel::Info, "BIOS loaded from {}", bios_path);
     eprintln!("retro_load_game(): finished");
     true
 }
@@ -270,13 +275,23 @@ pub extern "C" fn retro_run() {
         core.machine.z80.io.keypad[1] = (if key_period { 0x20 } else { 0x00 }) | (if key_3    { 0x10 } else { 0x00 }) | (if key_6     { 0x08 } else { 0x00 }) | (if key_9        { 0x04 } else { 0x00 });
         core.machine.z80.io.keypad[2] = (if key_0      { 0x20 } else { 0x00 }) | (if key_2    { 0x10 } else { 0x00 }) | (if key_5     { 0x08 } else { 0x00 }) | (if key_8        { 0x04 } else { 0x00 });
         core.machine.z80.io.keypad[3] = (if key_1 { 0x10 } else { 0x00 }) | (if key_4 { 0x08 } else { 0x00 }) | (if key_7 { 0x04 } else { 0x00 });
+
+        if key_comma && !crate::DUMP_REQUESTED.load(std::sync::atomic::Ordering::Relaxed) {
+            crate::DUMP_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
+        } else if !key_comma {
+            crate::DUMP_REQUESTED.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
     }
 
     // Video
 
+    core.machine.z80.io.colors_at_frame_start = core.machine.z80.io.colors;
+    core.machine.z80.io.color_events.clear();
+
     crate::machine::video::render_frame(
         &core.machine.z80.io.mem,
-        &core.machine.z80.io.colors,
+        &core.machine.z80.io.colors_at_frame_start,
+        // &core.machine.z80.io.colors,
         &core.machine.z80.io.color_events,
         core.machine.z80.io.horcb,
         core.machine.z80.io.verbl,
@@ -294,6 +309,58 @@ pub extern "C" fn retro_run() {
                 160 * 4,
             )
         };
+    }
+
+    if crate::DUMP_REQUESTED.load(std::sync::atomic::Ordering::Relaxed) {
+        eprintln!("=== FRAME DUMP ===");
+        eprintln!("colors:  {:02x?}", core.machine.z80.io.colors);
+        eprintln!("horcb:   {:#04x} (boundary pixel {})", 
+            core.machine.z80.io.horcb,
+            (core.machine.z80.io.horcb as usize & 0x3f) * 4);
+        eprintln!("verbl:   {:#04x} (lines {})", 
+            core.machine.z80.io.verbl,
+            core.machine.z80.io.verbl / 2);
+        eprintln!("magic:   {:#04x}", core.machine.z80.io.magic);
+        eprintln!("sound:   {:02x?}", core.machine.z80.io.sound_reg);
+        eprintln!("color_events count: {}", core.machine.z80.io.color_events.len());
+        for (step, reg, val) in core.machine.z80.io.color_events.iter() {
+            eprintln!("  fstep={:>6} reg={} val={:#04x}", step, reg, val);
+        }
+        eprintln!("--- VRAM $4000-$4FFF (unpacked pixels 0-3) ---");
+        for row in 0..102usize {
+            let offset = 0x4000 + row * 40;
+            let mut pixels = String::new();
+            for byte in &core.machine.z80.io.mem[offset..offset+40] {
+                pixels.push((((byte >> 6) & 0x03) + b'0') as char);
+                pixels.push((((byte >> 4) & 0x03) + b'0') as char);
+                pixels.push((((byte >> 2) & 0x03) + b'0') as char);
+                pixels.push(((byte & 0x03) + b'0') as char);
+            }
+            eprintln!("row {:>3}: {}", row, pixels);
+        }
+        eprintln!("--- FRAMEBUFFER ---");
+        let mut color_map: Vec<u32> = Vec::new();
+        let chars: Vec<char> = (33u8..=126u8).map(|c| c as char).collect();
+        // let chars = ['·', '░', '▒', '▓', '█', 'A', 'B', 'C', 'D', 'E', 'F', 'G'];
+        for row in 0..102usize {
+            let offset = row * 160;
+            let mut line = String::new();
+            for &pixel in &core.machine.frame_buffer[offset..offset+160] {
+                let idx = if let Some(i) = color_map.iter().position(|&c| c == pixel) {
+                    i
+                } else {
+                    color_map.push(pixel);
+                    color_map.len() - 1
+                };
+                line.push(chars[idx.min(chars.len() - 1)]);
+            }
+            eprintln!("row {:>3}: {}", row, line);
+        }
+        eprintln!("color legend:");
+        for (i, &color) in color_map.iter().enumerate() {
+            eprintln!("  {} = #{:06x}", chars[i], color);
+        }
+        eprintln!("=== END DUMP ===");
     }
 
     // Audio

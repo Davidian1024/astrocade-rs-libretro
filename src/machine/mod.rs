@@ -34,6 +34,7 @@ pub struct IO {
     pub knob: [u8; 4],
     pub keypad: [u8; 4],
 
+    pub colors_at_frame_start: [u8; 8],
     pub color_events: Vec<(u32, usize, u8)>, // (frame_step, register_index, value)
     pub current_frame_step: u32,
 
@@ -85,6 +86,8 @@ impl Z80_io for IO {
                 self.colors[reg] = value;
                 self.color_events
                     .push((self.current_frame_step, reg, value));
+                #[cfg(feature = "debug_logging")]
+                eprintln!("port_out(): 0x0B: COLBX reg={} val={:#04x} fstep={}", reg, value, self.current_frame_step);
             }
             0x0C => {
                 self.magic = value;
@@ -101,16 +104,18 @@ impl Z80_io for IO {
                 self.sound_reg[reg] = value;
                 #[cfg(feature = "debug_logging")]
                 if value != 0 && (reg == 5 || reg == 6 || reg == 7) {
-                    eprintln!("SOUND reg={} val={:#04x}", reg, value);
+                    eprintln!("port_out(): 0x10..=0x17: SOUND reg={} val={:#04x}", reg, value);
                 }
             }
             0x18 => {
                 // Block write: register index in high byte
                 let reg = ((addr >> 8) & 0x07) as usize;
+                #[cfg(feature = "debug_logging")]
+                eprintln!("port_out(): 0x18: COLBX addr={:#06x} reg={} val={:#04x}", addr, reg, value);
                 self.sound_reg[reg] = value;
                 #[cfg(feature = "debug_logging")]
                 if value != 0 && (reg == 5 || reg == 6 || reg == 7) {
-                    eprintln!("SOUND reg={} val={:#04x}", reg, value);
+                    eprintln!("port_out(): 0x18: SOUND reg={} val={:#04x}", reg, value);
                 }
             }
             0x19..=0x1F => {
@@ -118,7 +123,7 @@ impl Z80_io for IO {
                 self.sound_reg[reg as usize] = value;
                 #[cfg(feature = "debug_logging")]
                 if value != 0 && (reg == 5 || reg == 6 || reg == 7) {
-                    eprintln!("SOUND reg={} val={:#04x}", reg, value);
+                    eprintln!("port_out(): 0x19..=0x1F: SOUND reg={} val={:#04x}", reg, value);
                 }
                 if addr as u8 == 0x19 {
                     self.xpand = value;
@@ -152,10 +157,10 @@ impl Z80_io for IO {
                     if ctrl < 4 { self.input[ctrl] } else { 0x00 }
                 }
             }
-            0x18..=0x1D => 0x00, // sound chip pot reads etc, stub
+            0x18 => 0x00,  // sound chip read stub
+            0x19..=0x1B => 0x00, // sound chip pot reads etc, stub
             0x1C..=0x1F => {
-                let slot = (addr & 0x07) as u8;  // use low bits, not high byte
-                let ctrl = (slot & 0x03) as usize;
+                let ctrl = (addr & 0x03) as usize;
                 self.knob[ctrl]
             }
             _ => 0xFF,

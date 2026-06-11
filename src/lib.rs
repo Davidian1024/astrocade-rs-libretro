@@ -33,6 +33,9 @@ pub static LOG_CALLBACK: Mutex<
     Option<unsafe extern "C" fn(crate::types::RetroLogLevel, *const std::ffi::c_char)>,
 > = Mutex::new(None);
 
+pub static DUMP_REQUESTED: std::sync::atomic::AtomicBool = 
+    std::sync::atomic::AtomicBool::new(false);
+
 #[macro_export]
 macro_rules! retro_log {
     ($level:expr, $($arg:tt)*) => {

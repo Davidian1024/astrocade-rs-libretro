@@ -4,12 +4,6 @@ use z80::Z80;
 use crate::machine::Machine;
 use crate::machine::video;
 
-pub enum Waveform {
-    Square,
-    Pulse,
-    Sawtooth,
-}
-
 pub struct AstrocadeCore {
     pub(crate) frame_count: u32,
     pub(crate) machine: Machine,
@@ -36,6 +30,7 @@ impl AstrocadeCore {
             input: [0u8; 4],
             knob: [0u8; 4],
             keypad: [0u8; 4],
+            colors_at_frame_start: [0u8; 8],
             color_events: vec![],
             current_frame_step: 0,
             sound_reg: [0u8; 8],
