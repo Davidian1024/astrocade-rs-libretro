@@ -82,7 +82,7 @@ impl Z80_io for IO {
             0x09 => self.horcb = value,
             0x0A => self.verbl = value,
             0x0B => {
-                let reg = ((addr >> 8) & 0x07) as usize;
+                let reg = ((addr >> 8) as usize + 7) & 0x07;
                 self.colors[reg] = value;
                 self.color_events
                     .push((self.current_frame_step, reg, value));
