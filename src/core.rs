@@ -48,6 +48,7 @@ impl AstrocadeCore {
             c_count: 0,
             c_state: 0,
             bitswap: crate::machine::audio::build_bitswap(),
+            chip_remainder: 0,
         };
         let machine = Machine {
             z80: Z80::<IO>::new(io),

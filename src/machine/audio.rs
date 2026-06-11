@@ -11,47 +11,42 @@ pub fn generate_audio(
     c_count: &mut u8,
     c_state: &mut u8,
     bitswap: &[u8; 256],
+    chip_remainder: &mut u32,
     output: &mut [i16],
 ) {
-    let sample_count = output.len();
-    let mut idx = 0;
+    const CHIP_CLOCK: u32 = 1_789_772 / 4; // 447443 Hz
+    const SAMPLE_RATE: u32 = 48000;
+    const SAMPLE_SCALE: f32 = 1.0 / 60.0;
 
-    while idx < sample_count {
-        // Compute current sample
+    for sample in output.iter_mut() {
+        // Compute how many chip cycles to run for this output sample
+        *chip_remainder += CHIP_CLOCK;
+        let cycles = *chip_remainder / SAMPLE_RATE;
+        *chip_remainder %= SAMPLE_RATE;
+
         let mut cur: i32 = 0;
-        if *a_state != 0 {
-            cur += (sound_reg[6] & 0x0f) as i32;
-        }
-        if *b_state != 0 {
-            cur += (sound_reg[6] >> 4) as i32;
-        }
-        if *c_state != 0 {
-            cur += (sound_reg[5] & 0x0f) as i32;
-        }
-
-        // Noise AM
+        if *a_state != 0 { cur += (sound_reg[6] & 0x0f) as i32; }
+        if *b_state != 0 { cur += (sound_reg[6] >> 4)   as i32; }
+        if *c_state != 0 { cur += (sound_reg[5] & 0x0f) as i32; }
         if (sound_reg[5] & 0x20) != 0 && (*noise_state & 0x4000) != 0 {
             cur += (sound_reg[7] >> 4) as i32;
         }
 
-        // Scale to i16 range — max cur is 15+15+15+15=60, scale to ~32767
-        let sample = ((cur * 32767) / 60) as i16;
+        *sample = (cur as f32 * SAMPLE_SCALE * 32767.0) as i16;
 
-        // Fill output (stereo: left and right)
-        output[idx] = sample;
-
-        // Clock noise
-        *noise_clock = noise_clock.wrapping_add(1);
+        // Clock noise — advances by `cycles`, wraps at 64
+        *noise_clock = noise_clock.wrapping_add(cycles as u8);
         if *noise_clock >= 64 {
-            *noise_state =
-                (*noise_state << 1) | (!(((*noise_state >> 14) ^ (*noise_state >> 13)) & 1) & 1);
+            *noise_state = (*noise_state << 1)
+                | (!(((*noise_state >> 14) ^ (*noise_state >> 13)) & 1) & 1);
             *noise_clock -= 64;
             *vibrato_clock = vibrato_clock.wrapping_add(1);
         }
 
-        // Clock master oscillator
-        *master_count = master_count.wrapping_add(1);
-        if *master_count == 0 {
+        // Clock master oscillator — advances by `cycles`, wraps at 256
+        let (new_master, wrapped) = master_count.overflowing_add(cycles as u8);
+        *master_count = new_master;
+        if wrapped || new_master == 0 {
             *master_count = !sound_reg[0];
 
             if (sound_reg[5] & 0x10) == 0 {
@@ -71,14 +66,12 @@ pub fn generate_audio(
                 *a_state ^= 1;
                 *a_count = !sound_reg[1];
             }
-
             // Clock tone B
             *b_count = b_count.wrapping_add(1);
             if *b_count == 0 {
                 *b_state ^= 1;
                 *b_count = !sound_reg[2];
             }
-
             // Clock tone C
             *c_count = c_count.wrapping_add(1);
             if *c_count == 0 {
@@ -86,8 +79,6 @@ pub fn generate_audio(
                 *c_count = !sound_reg[3];
             }
         }
-
-        idx += 1;
     }
 }
 

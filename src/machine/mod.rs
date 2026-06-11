@@ -57,6 +57,7 @@ pub struct IO {
 
     // Bitswap table for noise
     pub bitswap: [u8; 256],
+    pub chip_remainder: u32,
 }
 
 impl Z80_io for IO {
