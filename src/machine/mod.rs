@@ -44,6 +44,7 @@ pub struct IO {
 
     // Sound chip registers
     pub sound_reg: [u8; 8],
+    pub shadow_reg: [u8; 8],
     pub sound_reg_shadow: [u8; 8],
 
     // Oscillator state
@@ -105,32 +106,29 @@ impl Z80_io for IO {
             0x10..=0x17 => {
                 // Direct register write: port $10=reg0, $11=reg1, ... $17=reg7
                 let reg = ((addr as u8) - 0x10) as usize;
+                self.shadow_reg[reg] = value;
                 self.sound_reg[reg] = value;
                 #[cfg(feature = "debug_logging")]
                 if value != self.sound_reg_shadow[reg] {
                     self.sound_reg_shadow[reg] = value;
                     eprintln!(
-                        "step={:>12} frame={:>6} fstep={:>6} | SOUND reg={} val={:#04x} (port={:#04x})",
-                        self.step_count,
-                        self.frame_count,
-                        self.current_frame_step,
-                        reg, value, addr as u8
+                        "step={:>12} frame={:>6} fstep={:>6} | SOUND reg={} (addr={:#06x}) val={:#04x}",
+                        self.step_count, self.frame_count, self.current_frame_step,
+                        reg, addr, value
                     );
                 }
             }
             0x18 => {
                 // Block write: register index in high byte
                 let reg = ((addr >> 8) & 0x07) as usize;
-                self.sound_reg[reg] = value;
+                self.sound_reg[reg] = self.shadow_reg[reg];
                 #[cfg(feature = "debug_logging")]
                 if value != self.sound_reg_shadow[reg] {
                     self.sound_reg_shadow[reg] = value;
                     eprintln!(
-                        "step={:>12} frame={:>6} fstep={:>6} | SOUND reg={} val={:#04x} (port={:#04x})",
-                        self.step_count,
-                        self.frame_count,
-                        self.current_frame_step,
-                        reg, value, addr as u8
+                        "step={:>12} frame={:>6} fstep={:>6} | SOUND reg={} (addr={:#06x}) val={:#04x}",
+                        self.step_count, self.frame_count, self.current_frame_step,
+                        reg, addr, value
                     );
                 }
             }
