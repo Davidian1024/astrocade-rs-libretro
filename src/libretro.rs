@@ -441,6 +441,8 @@ pub extern "C" fn retro_run() {
         }
 
         core.machine.z80.io.current_frame_step = frame_step;
+        core.machine.z80.io.frame_count = core.frame_count;
+        core.machine.z80.io.step_count = core.step_count;
         core.machine.z80.step();
         core.step_count += 1;
     }
