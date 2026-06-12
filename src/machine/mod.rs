@@ -89,8 +89,6 @@ impl Z80_io for IO {
                 self.colors[reg] = value;
                 self.color_events
                     .push((self.current_frame_step, reg, value));
-                #[cfg(feature = "debug_logging")]
-                eprintln!("port_out(): 0x0B: COLBX reg={} val={:#04x} fstep={}", reg, value, self.current_frame_step);
             }
             0x0C => {
                 self.magic = value;
@@ -106,28 +104,24 @@ impl Z80_io for IO {
                 let reg = ((addr as u8) - 0x10) as usize;
                 self.sound_reg[reg] = value;
                 #[cfg(feature = "debug_logging")]
-                if value != 0 && (reg == 5 || reg == 6 || reg == 7) {
+                if value != 0 {
                     eprintln!("port_out(): 0x10..=0x17: SOUND reg={} val={:#04x}", reg, value);
                 }
             }
             0x18 => {
                 // Block write: register index in high byte
                 let reg = ((addr >> 8) & 0x07) as usize;
-                #[cfg(feature = "debug_logging")]
-                eprintln!("port_out(): 0x18: COLBX addr={:#06x} reg={} val={:#04x}", addr, reg, value);
                 self.sound_reg[reg] = value;
                 #[cfg(feature = "debug_logging")]
-                if value != 0 && (reg == 5 || reg == 6 || reg == 7) {
+                if value != 0 {
                     eprintln!("port_out(): 0x18: SOUND reg={} val={:#04x}", reg, value);
                 }
             }
             0x19..=0x1F => {
-                let reg = (addr as u8) & 0x07;
-                self.sound_reg[reg as usize] = value;
+                let reg = ((addr >> 8) & 0x07) as usize;  // apply the fix
+                self.sound_reg[reg] = value;
                 #[cfg(feature = "debug_logging")]
-                if value != 0 && (reg == 5 || reg == 6 || reg == 7) {
-                    eprintln!("port_out(): 0x19..=0x1F: SOUND reg={} val={:#04x}", reg, value);
-                }
+                eprintln!("port_out(): 0x19..=0x1F: addr={:#06x} reg={} val={:#04x}", addr, reg, value);
                 if addr as u8 == 0x19 {
                     self.xpand = value;
                     self.funcgen_expand_color[0] = value & 0x03;
