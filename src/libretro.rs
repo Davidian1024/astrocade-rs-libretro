@@ -449,42 +449,29 @@ pub extern "C" fn retro_run() {
 
     core.frame_count += 1;
 
-    // Audio
-    let frames_per_frame = 48000 / 60;
-    let total_samples = frames_per_frame * 2; // stereo
-    let mut audio_buffer = vec![0i16; total_samples];
-
-    // Generate mono audio into every other sample, copy to both channels
-    let mut mono_buffer = vec![0i16; frames_per_frame];
-
+    // Audio — flush remaining samples to complete the frame
     {
         let io = &mut core.machine.z80.io;
-        crate::machine::audio::generate_audio(
-            &io.sound_reg,
-            &mut io.master_count,
-            &mut io.vibrato_clock,
-            &mut io.noise_clock,
-            &mut io.noise_state,
-            &mut io.a_count,
-            &mut io.a_state,
-            &mut io.b_count,
-            &mut io.b_state,
-            &mut io.c_count,
-            &mut io.c_state,
-            &io.bitswap,
-            &mut io.chip_remainder,
-            &mut mono_buffer,
-        );
-    }
+        io.flush_audio();  // generate any remaining samples
 
-    // Interleave mono into stereo
-    for i in 0..frames_per_frame {
-        audio_buffer[i * 2] = mono_buffer[i]; // left
-        audio_buffer[i * 2 + 1] = mono_buffer[i]; // right
-    }
+        let frames_per_frame = 800usize;
+        let total_samples = frames_per_frame * 2;
+        let mut audio_buffer = vec![0i16; total_samples];
 
-    if let Some(cb) = unsafe { crate::AUDIO_SAMPLE_BATCH_CALLBACK } {
-        unsafe { cb(audio_buffer.as_ptr(), frames_per_frame as usize) };
+        // Pad to exactly frames_per_frame samples if needed
+        io.audio_buffer.resize(frames_per_frame, 0);
+
+        for i in 0..frames_per_frame {
+            audio_buffer[i * 2]     = io.audio_buffer[i]; // left
+            audio_buffer[i * 2 + 1] = io.audio_buffer[i]; // right
+        }
+
+        // Reset for next frame
+        io.audio_buffer.clear();
+
+        if let Some(cb) = unsafe { crate::AUDIO_SAMPLE_BATCH_CALLBACK } {
+            unsafe { cb(audio_buffer.as_ptr(), frames_per_frame as usize) };
+        }
     }
 
     // eprintln!("retro_run(): finished");

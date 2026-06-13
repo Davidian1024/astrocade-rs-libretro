@@ -46,6 +46,8 @@ pub struct IO {
     pub sound_reg: [u8; 8],
     pub shadow_reg: [u8; 8],
     pub sound_reg_shadow: [u8; 8],
+    pub audio_buffer: Vec<i16>,        // grows to frames_per_frame each frame
+    pub audio_sample_acc: u32,         // fractional sample accumulator (fixed-point)
 
     // Oscillator state
     pub master_count: u8,
@@ -106,7 +108,7 @@ impl Z80_io for IO {
             0x10..=0x17 => {
                 // Direct register write: port $10=reg0, $11=reg1, ... $17=reg7
                 let reg = ((addr as u8) - 0x10) as usize;
-                self.shadow_reg[reg] = value;
+                self.flush_audio();
                 self.sound_reg[reg] = value;
                 #[cfg(feature = "debug_logging")]
                 if value != self.sound_reg_shadow[reg] {
@@ -120,8 +122,10 @@ impl Z80_io for IO {
             }
             0x18 => {
                 // Block write: register index in high byte
-                let reg = ((addr >> 8) & 0x07) as usize;
-                self.sound_reg[reg] = self.shadow_reg[reg];
+                let reg = ((addr >> 8) as usize + 7) & 0x07;
+                // let reg = ((addr >> 8) & 0x07) as usize;
+                self.flush_audio();          // ← add this
+                self.sound_reg[reg] = value; // ← back to writing value directly, not shadow
                 #[cfg(feature = "debug_logging")]
                 if value != self.sound_reg_shadow[reg] {
                     self.sound_reg_shadow[reg] = value;
@@ -266,6 +270,41 @@ impl IO {
 
         // Write result to framebuffer
         self.mem[fb_addr] = data;
+    }
+
+    pub fn flush_audio(&mut self) {
+        // How many samples should exist by now?
+        // frames_per_frame=800 samples over CYCLES_PER_FRAME=29816 cycles
+        // Use fixed-point: accumulate in units of 1/29816
+        // target_samples = current_frame_step * 800 / 29816
+        const CYCLES_PER_FRAME: u32 = 1_789_000 / 60;
+        const SAMPLES_PER_FRAME: u32 = 800;
+
+        let target = (self.current_frame_step as u64 * SAMPLES_PER_FRAME as u64
+            / CYCLES_PER_FRAME as u64) as usize;
+        let current = self.audio_buffer.len();
+        if target <= current {
+            return;
+        }
+        let count = target - current;
+        let mut new_samples = vec![0i16; count];
+        crate::machine::audio::generate_audio(
+            &self.sound_reg,
+            &mut self.master_count,
+            &mut self.vibrato_clock,
+            &mut self.noise_clock,
+            &mut self.noise_state,
+            &mut self.a_count,
+            &mut self.a_state,
+            &mut self.b_count,
+            &mut self.b_state,
+            &mut self.c_count,
+            &mut self.c_state,
+            &self.bitswap,
+            &mut self.chip_remainder,
+            &mut new_samples,
+        );
+        self.audio_buffer.extend_from_slice(&new_samples);
     }
 }
 

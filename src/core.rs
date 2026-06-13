@@ -41,6 +41,8 @@ impl AstrocadeCore {
             sound_reg: [0u8; 8],
             shadow_reg: [0u8; 8],
             sound_reg_shadow: [0xff; 8],
+            audio_buffer: Vec::new(),
+            audio_sample_acc: 0,
             master_count: 0,
             vibrato_clock: 0,
             noise_clock: 0,

@@ -26,8 +26,8 @@ pub fn generate_audio(
 
         // Sample the current tone states for output
         let mut cur: i32 = 0;
-        let vol_a = (sound_reg[6] >> 4) as i32;    // was & 0x0f
-        let vol_b = (sound_reg[6] & 0x0f) as i32;  // was >> 4
+        let vol_a = (sound_reg[6] & 0x0f) as i32;
+        let vol_b = (sound_reg[6] >> 4)   as i32;
         let vol_c = (sound_reg[5] & 0x0f) as i32;
         let vol_n = (sound_reg[7] >> 4)   as i32;
 
