@@ -1,40 +1,22 @@
 use z80::{Z80, Z80_io};
 use std::cell::Cell;
 
+use crate::{CYCLES_PER_FRAME, SAMPLES_PER_FRAME};
+
 pub mod audio;
 pub mod video;
 
 pub struct IO {
     pub mem: [u8; 0x10000],
-    // Color registers: [COL0R, COL1R, COL2R, COL3R, COL0L, COL1L, COL2L, COL3L]
-    // ports $00-$07
-    pub colors: [u8; 8],
-    // Horizontal color boundary, port $09
-    pub horcb: u8,
-    // Vertical blank line, port $0A
-    pub verbl: u8,
-    // Magic register, port $0C
-    pub magic: u8,
-    // Expander register, port $19
-    pub xpand: u8,
-    // interrupt mode, port $0E
-    pub inmod: u8,
-    // interrupt feedback, port $0D
-    pub infbk: u8,
-    // interrupt line, port $0F
-    pub inlin: u8,
-
-    // Magic memory function generator state
-    pub funcgen_expand_count: u8,      // flip-flop for expand mode
-    pub funcgen_shift_prev_data: u8,   // previous byte for shift spillover
-    pub funcgen_rotate_count: u8,      // counter for rotate mode
-    pub funcgen_rotate_data: [u8; 4],  // accumulated data for rotate
-    pub funcgen_expand_color: [u8; 2], // colors from xpand register
-    pub funcgen_intercept: Cell<u8>,
-
-    pub input: [u8; 4], // handle state for players 1-4
-    pub knob: [u8; 4],
-    pub keypad: [u8; 4],
+    
+    pub colors: [u8; 8],  // Ports $00-$07: Color registers: [COL0R, COL1R, COL2R, COL3R, COL0L, COL1L, COL2L, COL3L]
+    pub horcb: u8,        // Port      $09: Horizontal color boundary
+    pub verbl: u8,        // Port      $0A: Vertical blank line
+    pub magic: u8,        // Port      $0C: Magic register
+    pub xpand: u8,        // Port      $19: Expander register
+    pub inmod: u8,        // Port      $0E: Interrupt mode
+    pub infbk: u8,        // Port      $0D: Interrupt feedback
+    pub inlin: u8,        // Port      $0F: Interrupt line
 
     pub colors_at_frame_start: [u8; 8],
     pub color_events: Vec<(u32, usize, u8)>, // (frame_step, register_index, value)
@@ -42,9 +24,20 @@ pub struct IO {
     pub frame_count: u32,
     pub step_count: u64,
 
+    // Magic memory function generator state
+    pub funcgen_expand_count: u8,      // Flip-flop for expand mode
+    pub funcgen_shift_prev_data: u8,   // Previous byte for shift spillover
+    pub funcgen_rotate_count: u8,      // Counter for rotate mode
+    pub funcgen_rotate_data: [u8; 4],  // Accumulated data for rotate
+    pub funcgen_expand_color: [u8; 2], // Colors from xpand register
+    pub funcgen_intercept: Cell<u8>,
+
+    pub input: [u8; 4], // Handle state for players 1-4
+    pub knob: [u8; 4],
+    pub keypad: [u8; 4],
+
     // Sound chip registers
     pub sound_reg: [u8; 8],
-    pub shadow_reg: [u8; 8],
     pub sound_reg_shadow: [u8; 8],
     pub audio_buffer: Vec<i16>,        // grows to frames_per_frame each frame
     pub audio_sample_acc: u32,         // fractional sample accumulator (fixed-point)
@@ -103,10 +96,9 @@ impl Z80_io for IO {
                 self.funcgen_shift_prev_data = 0;
             }
             0x0D => self.infbk = value,
-            0x0E => self.inlin = value, // was inmod
-            0x0F => self.inmod = value, // was inlin
+            0x0E => self.inlin = value,
+            0x0F => self.inmod = value,
             0x10..=0x17 => {
-                // Direct register write: port $10=reg0, $11=reg1, ... $17=reg7
                 let reg = ((addr as u8) - 0x10) as usize;
                 self.flush_audio();
                 self.sound_reg[reg] = value;
@@ -121,11 +113,9 @@ impl Z80_io for IO {
                 }
             }
             0x18 => {
-                // Block write: register index in high byte
                 let reg = ((addr >> 8) as usize + 7) & 0x07;
-                // let reg = ((addr >> 8) & 0x07) as usize;
-                self.flush_audio();          // ← add this
-                self.sound_reg[reg] = value; // ← back to writing value directly, not shadow
+                self.flush_audio();
+                self.sound_reg[reg] = value;
                 #[cfg(feature = "debug_logging")]
                 if value != self.sound_reg_shadow[reg] {
                     self.sound_reg_shadow[reg] = value;
@@ -141,21 +131,6 @@ impl Z80_io for IO {
                     self.funcgen_expand_color[0] = value & 0x03;
                     self.funcgen_expand_color[1] = (value >> 2) & 0x03;
             }
-            // 0x1A..=0x1F => {
-            //     let reg = (addr as u8) & 0x07;
-            //     self.sound_reg[reg as usize] = value;
-            //     #[cfg(feature = "debug_logging")]
-            //     if value != self.sound_reg_shadow[reg as usize] {
-            //         self.sound_reg_shadow[reg as usize] = value;
-            //         eprintln!(
-            //             "step={:>12} frame={:>6} fstep={:>6} | SOUND reg={} val={:#04x} (port={:#04x})",
-            //             self.step_count,
-            //             self.frame_count,
-            //             self.current_frame_step,
-            //             reg, value, addr as u8
-            //         );
-            //     }
-            // }
             _ => {}
         }
     }
@@ -273,13 +248,6 @@ impl IO {
     }
 
     pub fn flush_audio(&mut self) {
-        // How many samples should exist by now?
-        // frames_per_frame=800 samples over CYCLES_PER_FRAME=29816 cycles
-        // Use fixed-point: accumulate in units of 1/29816
-        // target_samples = current_frame_step * 800 / 29816
-        const CYCLES_PER_FRAME: u32 = 1_789_000 / 60;
-        const SAMPLES_PER_FRAME: u32 = 800;
-
         let target = (self.current_frame_step as u64 * SAMPLES_PER_FRAME as u64
             / CYCLES_PER_FRAME as u64) as usize;
         let current = self.audio_buffer.len();

@@ -39,7 +39,6 @@ impl AstrocadeCore {
             frame_count: 0,
             step_count: 0,
             sound_reg: [0u8; 8],
-            shadow_reg: [0u8; 8],
             sound_reg_shadow: [0xff; 8],
             audio_buffer: Vec::new(),
             audio_sample_acc: 0,
@@ -61,7 +60,6 @@ impl AstrocadeCore {
             palette: video::build_palette(),
             frame_buffer: vec![0u32; 160 * 102],
         };
-        // machine.z80.sp = 0x4FCE;
         AstrocadeCore {
             frame_count: 0,
             machine,

@@ -39,11 +39,7 @@ pub fn render_frame(
     let screen_lines = screen_lines.min(102);
     let boundary_pixel = (horcb as usize & 0x3f) * 4;
 
-    // Start with the initial color register state
     let mut colors = *initial_colors;
-
-    // Sort events by frame_step (should already be in order but be safe)
-    // We'll walk through them as we render each scanline
 
     let cycles_per_scanline = cycles_per_frame / screen_lines.max(1) as u32;
     let mut event_idx = 0;
@@ -58,7 +54,6 @@ pub fn render_frame(
             continue;
         }
 
-        // Apply any color events that happened before this scanline
         let scanline_start_cycle = y as u32 * cycles_per_scanline;
         while event_idx < color_events.len() && color_events[event_idx].0 <= scanline_start_cycle {
             let (_, reg, val) = color_events[event_idx];

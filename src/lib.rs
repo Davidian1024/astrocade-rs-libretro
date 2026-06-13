@@ -7,6 +7,12 @@ pub mod libretro;
 pub mod machine;
 pub mod types;
 
+// Astrocade timing constants
+pub const ASTROCADE_CLOCK: u32 = 1_789_772;  // Z80 and sound chip clock (14_318_181 / 8)
+pub const CYCLES_PER_FRAME: u32 = ASTROCADE_CLOCK / 60;  // ~29_829
+pub const SAMPLE_RATE: u32 = 48_000;
+pub const SAMPLES_PER_FRAME: u32 = SAMPLE_RATE / 60;     // 800
+
 static CORE: Mutex<Option<AstrocadeCore>> = Mutex::new(None);
 
 pub static mut ENVIRONMENT_CALLBACK: Option<

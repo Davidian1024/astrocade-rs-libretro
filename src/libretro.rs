@@ -1,4 +1,4 @@
-use crate::{retro_log, types::{RETRO_DEVICE_ANALOG, RETRO_DEVICE_ID_ANALOG_X, RETRO_DEVICE_ID_ANALOG_Y, RETRO_DEVICE_ID_JOYPAD_R2, RETRO_DEVICE_ID_KEYBOARD_0, RETRO_DEVICE_ID_KEYBOARD_1, RETRO_DEVICE_ID_KEYBOARD_2, RETRO_DEVICE_ID_KEYBOARD_3, RETRO_DEVICE_ID_KEYBOARD_4, RETRO_DEVICE_ID_KEYBOARD_5, RETRO_DEVICE_ID_KEYBOARD_6, RETRO_DEVICE_ID_KEYBOARD_7, RETRO_DEVICE_ID_KEYBOARD_8, RETRO_DEVICE_ID_KEYBOARD_9, RETRO_DEVICE_ID_KEYBOARD_ASTERISK, RETRO_DEVICE_ID_KEYBOARD_COMMA, RETRO_DEVICE_ID_KEYBOARD_MINUS, RETRO_DEVICE_ID_KEYBOARD_PERIOD, RETRO_DEVICE_ID_KEYBOARD_PLUS, RETRO_DEVICE_ID_KEYBOARD_RETURN, RETRO_DEVICE_ID_KEYBOARD_SLASH, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_KEYBOARD, RETRO_ENVIRONMENT_GET_LOG_INTERFACE, RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, RETRO_ENVIRONMENT_SET_KEYBOARD_REPORTING, RETRO_ENVIRONMENT_SET_MESSAGE, RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, RETRO_PIXEL_FORMAT_XRGB8888, RetroGameInfo, RetroInputDescriptor, RetroLogCallback, RetroLogLevel, RetroMessage, RetroSystemAvInfo, RetroSystemInfo}};
+use crate::{CYCLES_PER_FRAME, retro_log, types::{RETRO_DEVICE_ANALOG, RETRO_DEVICE_ID_ANALOG_X, RETRO_DEVICE_ID_ANALOG_Y, RETRO_DEVICE_ID_JOYPAD_R2, RETRO_DEVICE_ID_KEYBOARD_0, RETRO_DEVICE_ID_KEYBOARD_1, RETRO_DEVICE_ID_KEYBOARD_2, RETRO_DEVICE_ID_KEYBOARD_3, RETRO_DEVICE_ID_KEYBOARD_4, RETRO_DEVICE_ID_KEYBOARD_5, RETRO_DEVICE_ID_KEYBOARD_6, RETRO_DEVICE_ID_KEYBOARD_7, RETRO_DEVICE_ID_KEYBOARD_8, RETRO_DEVICE_ID_KEYBOARD_9, RETRO_DEVICE_ID_KEYBOARD_ASTERISK, RETRO_DEVICE_ID_KEYBOARD_COMMA, RETRO_DEVICE_ID_KEYBOARD_MINUS, RETRO_DEVICE_ID_KEYBOARD_PERIOD, RETRO_DEVICE_ID_KEYBOARD_PLUS, RETRO_DEVICE_ID_KEYBOARD_RETURN, RETRO_DEVICE_ID_KEYBOARD_SLASH, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_KEYBOARD, RETRO_ENVIRONMENT_GET_LOG_INTERFACE, RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, RETRO_ENVIRONMENT_SET_KEYBOARD_REPORTING, RETRO_ENVIRONMENT_SET_MESSAGE, RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, RETRO_PIXEL_FORMAT_XRGB8888, RetroGameInfo, RetroInputDescriptor, RetroLogCallback, RetroLogLevel, RetroMessage, RetroSystemAvInfo, RetroSystemInfo}};
 
 #[cfg(feature = "debug_logging")]
 use crate::debug_print;
@@ -261,8 +261,6 @@ pub extern "C" fn retro_load_game(game: *const RetroGameInfo) -> bool {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn retro_run() {
-    // eprintln!("retro_run(): started");
-
     let mut core = crate::CORE.lock().unwrap();
     let core = core.as_mut().unwrap();
 
@@ -333,7 +331,6 @@ pub extern "C" fn retro_run() {
     crate::machine::video::render_frame(
         &core.machine.z80.io.mem,
         &core.machine.z80.io.colors_at_frame_start,
-        // &core.machine.z80.io.colors,
         &core.machine.z80.io.color_events,
         core.machine.z80.io.horcb,
         core.machine.z80.io.verbl,
@@ -406,11 +403,9 @@ pub extern "C" fn retro_run() {
     }
 
     // Machine
-    const CYCLES_PER_FRAME: u32 = 1_789_000 / 60;
     const CYCLES_PER_SCANLINE: u32 = CYCLES_PER_FRAME / 95;
 
     for frame_step in 0..CYCLES_PER_FRAME {
-        // Fire interrupt once per frame when CPU is halted and interrupts enabled
         if frame_step == CYCLES_PER_SCANLINE * (core.machine.z80.io.inlin as u32 / 2) {
             if core.machine.z80.iff1 || core.machine.z80.halted {
                 core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
@@ -449,24 +444,23 @@ pub extern "C" fn retro_run() {
 
     core.frame_count += 1;
 
-    // Audio — flush remaining samples to complete the frame
+    // Audio
+
     {
         let io = &mut core.machine.z80.io;
-        io.flush_audio();  // generate any remaining samples
+        io.flush_audio();
 
         let frames_per_frame = 800usize;
         let total_samples = frames_per_frame * 2;
         let mut audio_buffer = vec![0i16; total_samples];
 
-        // Pad to exactly frames_per_frame samples if needed
         io.audio_buffer.resize(frames_per_frame, 0);
 
         for i in 0..frames_per_frame {
-            audio_buffer[i * 2]     = io.audio_buffer[i]; // left
-            audio_buffer[i * 2 + 1] = io.audio_buffer[i]; // right
+            audio_buffer[i * 2]     = io.audio_buffer[i];
+            audio_buffer[i * 2 + 1] = io.audio_buffer[i];
         }
 
-        // Reset for next frame
         io.audio_buffer.clear();
 
         if let Some(cb) = unsafe { crate::AUDIO_SAMPLE_BATCH_CALLBACK } {
@@ -474,7 +468,6 @@ pub extern "C" fn retro_run() {
         }
     }
 
-    // eprintln!("retro_run(): finished");
 }
 
 #[unsafe(no_mangle)]
@@ -495,7 +488,7 @@ pub extern "C" fn retro_unload_game() {
 pub extern "C" fn retro_get_region() -> u32 {
     eprintln!("retro_get_region(): started");
     eprintln!("retro_get_region(): finished");
-    0 // NTSC
+    0
 }
 
 #[unsafe(no_mangle)]

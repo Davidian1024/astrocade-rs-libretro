@@ -1,3 +1,5 @@
+use crate::ASTROCADE_CLOCK;
+
 pub fn generate_audio(
     sound_reg: &[u8; 8],
     master_count: &mut u8,
@@ -14,13 +16,12 @@ pub fn generate_audio(
     chip_remainder: &mut u32,
     output: &mut [i16],
 ) {
-    const CHIP_CLOCK: u32 = 1_789_772; // full Z80 clock rate, not /4
     const SAMPLE_RATE: u32 = 48000;
     const SAMPLE_SCALE: f32 = 1.0 / 60.0;
 
     for sample in output.iter_mut() {
         // Compute chip cycles for this output sample
-        *chip_remainder += CHIP_CLOCK;
+        *chip_remainder += ASTROCADE_CLOCK;
         let cycles = *chip_remainder / SAMPLE_RATE;
         *chip_remainder %= SAMPLE_RATE;
 
