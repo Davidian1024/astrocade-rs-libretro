@@ -493,37 +493,69 @@ pub extern "C" fn retro_get_region() -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn retro_serialize_size() -> usize {
-    eprintln!("retro_serialize_size(): started");
-    eprintln!("retro_serialize_size(): finished");
-    0
+    crate::savestate::SAVE_STATE_SIZE
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn retro_serialize(_data: *mut std::ffi::c_void, _size: usize) -> bool {
-    eprintln!("retro_serialize(): started");
-    eprintln!("retro_serialize(): finished");
-    false
+pub extern "C" fn retro_serialize(data: *mut std::ffi::c_void, size: usize) -> bool {
+    if data.is_null() || size < crate::savestate::SAVE_STATE_SIZE {
+        return false;
+    }
+    let core_guard = crate::CORE.lock().unwrap();
+    let core = match core_guard.as_ref() {
+        Some(c) => c,
+        None => return false,
+    };
+    let ss = crate::savestate::serialize(core);
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            &ss as *const crate::savestate::SaveState as *const u8,
+            data as *mut u8,
+            crate::savestate::SAVE_STATE_SIZE,
+        );
+    }
+    true
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn retro_unserialize(_data: *const std::ffi::c_void, _size: usize) -> bool {
-    eprintln!("retro_unserialize(): started");
-    eprintln!("retro_unserialize(): finished");
-    false
+pub extern "C" fn retro_unserialize(data: *const std::ffi::c_void, size: usize) -> bool {
+    if data.is_null() || size < crate::savestate::SAVE_STATE_SIZE {
+        return false;
+    }
+    let mut ss = std::mem::MaybeUninit::<crate::savestate::SaveState>::uninit();
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            data as *const u8,
+            ss.as_mut_ptr() as *mut u8,
+            crate::savestate::SAVE_STATE_SIZE,
+        );
+    }
+    let ss = unsafe { ss.assume_init() };
+    let mut core_guard = crate::CORE.lock().unwrap();
+    let core = match core_guard.as_mut() {
+        Some(c) => c,
+        None => return false,
+    };
+    crate::savestate::unserialize(core, &ss)
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn retro_get_memory_data(_id: u32) -> *mut std::ffi::c_void {
-    eprintln!("retro_get_memory_data(): started");
-    eprintln!("retro_get_memory_data(): finished");
-    std::ptr::null_mut()
+pub extern "C" fn retro_get_memory_data(id: u32) -> *mut std::ffi::c_void {
+    const RETRO_MEMORY_SYSTEM_RAM: u32 = 2;
+    if id != RETRO_MEMORY_SYSTEM_RAM {
+        return std::ptr::null_mut();
+    }
+    let mut core_guard = crate::CORE.lock().unwrap();
+    match core_guard.as_mut() {
+        Some(core) => core.machine.z80.io.mem.as_mut_ptr() as *mut std::ffi::c_void,
+        None => std::ptr::null_mut(),
+    }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn retro_get_memory_size(_id: u32) -> usize {
-    eprintln!("retro_get_memory_size(): started");
-    eprintln!("retro_get_memory_size(): finished");
-    0
+pub extern "C" fn retro_get_memory_size(id: u32) -> usize {
+    const RETRO_MEMORY_SYSTEM_RAM: u32 = 2;
+    if id == RETRO_MEMORY_SYSTEM_RAM { 0x10000 } else { 0 }
 }
 
 #[unsafe(no_mangle)]

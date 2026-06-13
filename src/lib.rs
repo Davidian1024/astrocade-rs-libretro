@@ -5,6 +5,7 @@ use crate::core::AstrocadeCore;
 pub mod core;
 pub mod libretro;
 pub mod machine;
+pub mod savestate;
 pub mod types;
 
 // Astrocade timing constants
@@ -47,7 +48,7 @@ macro_rules! retro_log {
     ($level:expr, $($arg:tt)*) => {
         if let Some(cb) = *crate::LOG_CALLBACK.lock().unwrap() {
             let msg = std::ffi::CString::new(format!("{}\n", format!($($arg)*))).unwrap();
-            unsafe { cb($level, msg.as_ptr()); }
+                unsafe { cb($level, msg.as_ptr()) };
         }
     }
 }
