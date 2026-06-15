@@ -14,9 +14,9 @@ pub struct IO {
     pub verbl: u8,        // Port      $0A: Vertical blank line
     pub magic: u8,        // Port      $0C: Magic register
     pub xpand: u8,        // Port      $19: Expander register
-    pub inmod: u8,        // Port      $0E: Interrupt mode
-    pub infbk: u8,        // Port      $0D: Interrupt feedback
-    pub inlin: u8,        // Port      $0F: Interrupt line
+    pub infbk: u8,        // Port $0D: Interrupt feedback / vector byte
+    pub inmod: u8,        // Port $0E: Interrupt enable and mode (bit 3 = scanline int enable)
+    pub inlin: u8,        // Port $0F: Interrupt scanline number
 
     pub colors_at_frame_start: [u8; 8],
     pub color_events: Vec<(u32, usize, u8)>, // (frame_step, register_index, value)
@@ -95,9 +95,9 @@ impl Z80_io for IO {
                 self.funcgen_rotate_count = 0;
                 self.funcgen_shift_prev_data = 0;
             }
-            0x0D => self.infbk = value,
-            0x0E => self.inlin = value,
-            0x0F => self.inmod = value,
+            0x0D => self.infbk = value,   // interrupt vector byte
+            0x0E => self.inmod = value,   // interrupt enable/mode
+            0x0F => self.inlin = value,   // interrupt scanline
             0x10..=0x17 => {
                 let reg = ((addr as u8) - 0x10) as usize;
                 self.flush_audio();
@@ -146,9 +146,9 @@ impl Z80_io for IO {
             }
             0x09..=0x0B => 0x00, // write-only video registers
             0x0C => 0x00,        // write-only MAGIC
-            0x0D => 0x00,        // write-only INFBK
-            0x0E => 0x00,        // write-only INLIN
-            0x0F => 0x00,        // write-only INMOD
+            0x0D => 0x00,        // write-only INFBK (vector)
+            0x0E => 0x00,        // write-only INMOD (enable/mode)
+            0x0F => 0x00,        // write-only INLIN (scanline)
             0x10..=0x17 => {
                 let slot = (addr & 0x07) as u8;  // use low bits, not high byte
                 if slot & 0x04 != 0 {

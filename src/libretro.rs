@@ -403,13 +403,26 @@ pub extern "C" fn retro_run() {
     }
 
     // Machine
-    const CYCLES_PER_SCANLINE: u32 = CYCLES_PER_FRAME / 95;
+    //
+    // The Astrocade screen is 262 total scanlines at 455 clocks each.
+    // 22 scanlines are vertical blanking (VERT_OFFSET) before the visible
+    // area.  INLIN holds the Astrocade scanline number (0-based from the
+    // top of the visible area), so the physical scanline is inlin + 22.
+    // INMOD bit 3 enables the scanline interrupt.  INFBK is the IRQ vector.
+    const TOTAL_SCANLINES: u32 = 262;
+    const VERT_OFFSET: u32 = 22;
+    const CYCLES_PER_SCANLINE: u32 = CYCLES_PER_FRAME / TOTAL_SCANLINES;
+
+    let irq_physical_line = (core.machine.z80.io.inlin as u32).saturating_add(VERT_OFFSET);
+    let irq_fire_step = CYCLES_PER_SCANLINE * irq_physical_line;
+    let scanline_irq_enabled = (core.machine.z80.io.inmod & 0x08) != 0;
 
     for frame_step in 0..CYCLES_PER_FRAME {
-        if frame_step == CYCLES_PER_SCANLINE * (core.machine.z80.io.inlin as u32 / 2) {
-            if core.machine.z80.iff1 || core.machine.z80.halted {
-                core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
-            }
+        if scanline_irq_enabled
+            && frame_step == irq_fire_step
+            && (core.machine.z80.iff1 || core.machine.z80.halted)
+        {
+            core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
         }
 
         // DEBUG: Per-second state dump
