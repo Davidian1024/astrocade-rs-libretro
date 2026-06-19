@@ -102,29 +102,11 @@ impl Z80_io for IO {
                 let reg = ((addr as u8) - 0x10) as usize;
                 self.flush_audio();
                 self.sound_reg[reg] = value;
-                #[cfg(feature = "debug_logging")]
-                if value != self.sound_reg_shadow[reg] {
-                    self.sound_reg_shadow[reg] = value;
-                    eprintln!(
-                        "step={:>12} frame={:>6} fstep={:>6} | SOUND reg={} (addr={:#06x}) val={:#04x}",
-                        self.step_count, self.frame_count, self.current_frame_step,
-                        reg, addr, value
-                    );
-                }
             }
             0x18 => {
                 let reg = ((addr >> 8) as usize + 7) & 0x07;
                 self.flush_audio();
                 self.sound_reg[reg] = value;
-                #[cfg(feature = "debug_logging")]
-                if value != self.sound_reg_shadow[reg] {
-                    self.sound_reg_shadow[reg] = value;
-                    eprintln!(
-                        "step={:>12} frame={:>6} fstep={:>6} | SOUND reg={} (addr={:#06x}) val={:#04x}",
-                        self.step_count, self.frame_count, self.current_frame_step,
-                        reg, addr, value
-                    );
-                }
             }
             0x19 => {
                     self.xpand = value;

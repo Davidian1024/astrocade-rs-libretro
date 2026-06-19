@@ -266,12 +266,20 @@ pub extern "C" fn retro_run() {
 
     // Input
 
+    #[cfg(feature = "debug_logging")]
+    let mut catch_trigger = false;
+    #[cfg(feature = "debug_logging")]
+    let mut catch_enter = false;
+
     if let Some(poll) = unsafe { crate::INPUT_POLL_CALLBACK } {
         unsafe { poll() };
     }
     if let Some(state) = unsafe { crate::INPUT_STATE_CALLBACK } {
         for port in 0..4u32 {
             let trigger = unsafe { state(port, 1, 0, RETRO_DEVICE_ID_JOYPAD_R2) != 0 };
+
+            #[cfg(feature = "debug_logging")]
+            if trigger { catch_trigger = true; }
 
             let left_stick_x: i16 = unsafe { state(port, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X) };
             let left_stick_y: i16 = unsafe { state(port, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_Y) };
@@ -310,6 +318,9 @@ pub extern "C" fn retro_run() {
         let key_8 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_8, ) } != 0;
         let key_9 = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_9, ) } != 0;
         let key_enter = unsafe { state( 0, RETRO_DEVICE_KEYBOARD, 0, RETRO_DEVICE_ID_KEYBOARD_RETURN, ) } != 0;
+
+        #[cfg(feature = "debug_logging")]
+        if key_enter { catch_enter = true; }
 
         core.machine.z80.io.keypad[0] = (if key_enter  { 0x20 } else { 0x00 }) | (if key_plus { 0x10 } else { 0x00 }) | (if key_minus { 0x08 } else { 0x00 }) | (if key_asterisk { 0x04 } else { 0x00 }) | (if key_slash { 0x02 } else { 0x00 });
         core.machine.z80.io.keypad[1] = (if key_period { 0x20 } else { 0x00 }) | (if key_3    { 0x10 } else { 0x00 }) | (if key_6     { 0x08 } else { 0x00 }) | (if key_9        { 0x04 } else { 0x00 });
@@ -409,31 +420,72 @@ pub extern "C" fn retro_run() {
     // area.  INLIN holds the Astrocade scanline number (0-based from the
     // top of the visible area), so the physical scanline is inlin + 22.
     // INMOD bit 3 enables the scanline interrupt.  INFBK is the IRQ vector.
+    // The Astrocade's scanline interrupt registers (INFBK, INMOD, INLIN) are
+    // written by the game during execution, so they must be read fresh each
+    // cycle rather than captured before the loop.  Games typically configure
+    // them during their init sequence on the very first frame.
+    // Screen geometry: 455 pixel clocks/scanline, pixel clock = CPU clock * 4.
+    // CPU cycles/scanline = 455/4 = 113.75 (not integer).
+    // Use x4 fixed-point units throughout: 1 x4-unit = 0.25 CPU cycles.
     const TOTAL_SCANLINES: u32 = 262;
     const VERT_OFFSET: u32 = 22;
-    const CYCLES_PER_SCANLINE: u32 = CYCLES_PER_FRAME / TOTAL_SCANLINES;
+    const CYCLES_PER_SCANLINE_X4: u32 = 455;                              // exact
+    const CYCLES_PER_FRAME_X4: u32 = CYCLES_PER_SCANLINE_X4 * TOTAL_SCANLINES; // 119210
 
-    let irq_physical_line = (core.machine.z80.io.inlin as u32).saturating_add(VERT_OFFSET);
-    let irq_fire_step = CYCLES_PER_SCANLINE * irq_physical_line;
-    let scanline_irq_enabled = (core.machine.z80.io.inmod & 0x08) != 0;
+    // Track whether we have a pending assert-mode IRQ that needs clearing.
+    // We use assert_irq (not pulse_irq) so the interrupt isn't missed if iff1
+    // happens to be false at the exact fire cycle.  But we must clear it on
+    // the very next step — otherwise the ASSERT bit stays set and the CPU
+    // re-takes the interrupt every time RETI re-enables iff1.
+    // last_irq_fire_x4 tracks the most recent scanline cycle at which we fired
+    // an IRQ this frame.  Games use raster interrupts — the ISR fires, does work,
+    // writes a new inlin value, and returns expecting another IRQ at the new
+    // scanline.  We fire again whenever the current irq_fire_cycle_x4 is strictly
+    // greater than the last one fired, meaning inlin has advanced forward.
+    let mut last_irq_fire_x4: Option<u32> = None;
+    let mut irq_asserted = false;
 
-    for frame_step in 0..CYCLES_PER_FRAME {
-        if scanline_irq_enabled
-            && frame_step == irq_fire_step
-            && (core.machine.z80.iff1 || core.machine.z80.halted)
-        {
-            core.machine.z80.pulse_irq(core.machine.z80.io.infbk);
+    // frame_step_x4 tracks elapsed time in units of (CPU cycles * 4).
+    // This matches the screen geometry exactly: 455 pixel clocks per scanline,
+    // with the pixel clock running at 4x the CPU clock, so each scanline is
+    // exactly 455 x4-units = 113.75 CPU cycles.  Using integer x4 units avoids
+    // the 223-cycle-per-frame rounding error from integer CYCLES_PER_SCANLINE.
+    // z80.step() returns CPU cycles; multiply by 4 before accumulating.
+    let mut frame_step_x4: u32 = 0;
+
+    while frame_step_x4 < CYCLES_PER_FRAME_X4 {
+        // Read interrupt registers fresh — games write them mid-frame.
+        let scanline_irq_enabled = (core.machine.z80.io.inmod & 0x08) != 0;
+        let irq_physical_line    = (core.machine.z80.io.inlin as u32).saturating_add(VERT_OFFSET);
+        let irq_fire_cycle_x4    = CYCLES_PER_SCANLINE_X4 * irq_physical_line;
+
+        // Fire an IRQ when we reach the target scanline.  Support raster interrupts
+        // by allowing multiple IRQs per frame: fire again whenever irq_fire_cycle_x4
+        // has moved strictly forward past the last position we fired at.
+        let is_new_threshold = match last_irq_fire_x4 {
+            None => true,
+            Some(last) => irq_fire_cycle_x4 > last,
+        };
+        if scanline_irq_enabled && is_new_threshold && frame_step_x4 >= irq_fire_cycle_x4 {
+            core.machine.z80.assert_irq(core.machine.z80.io.infbk);
+            irq_asserted = true;
+            last_irq_fire_x4 = Some(irq_fire_cycle_x4);
         }
 
         // DEBUG: Per-second state dump
         #[cfg(feature = "debug_logging")]
-        if core.frame_count % 60 == 0 && frame_step == 0 {
+        if core.frame_count % 60 == 0 && frame_step_x4 == 0 {
             debug_print!(
                 core.step_count,
                 core.frame_count,
-                frame_step,
-                "{} $4FCE={:#06x} $4FD0={:#06x} $4FD4={:#04x} $4FEA={:#04x} $4FF9={:#04x}",
+                frame_step_x4 / 4,
+                "> pc={:#06x}:{:12} inmod={:#04x} inlin={:#04x} infbk={:#04x} irq_enabled={:5} $4FCE={:#06x} $4FD0={:#06x} $4FD4={:#04x} $4FEA={:#04x} $4FF9={:#04x} {}{}",
+                core.machine.z80.pc,
                 disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc),
+                core.machine.z80.io.inmod,
+                core.machine.z80.io.inlin,
+                core.machine.z80.io.infbk,
+                (core.machine.z80.io.inmod & 0x08) != 0,
                 u16::from_le_bytes([
                     core.machine.z80.io.mem[0x4FCE],
                     core.machine.z80.io.mem[0x4FCF]
@@ -445,14 +497,59 @@ pub extern "C" fn retro_run() {
                 core.machine.z80.io.mem[0x4FD4],
                 core.machine.z80.io.mem[0x4FEA],
                 core.machine.z80.io.mem[0x4FF9],
+                if catch_trigger { "Trigger" } else { "" },
+                if catch_enter { "Enter" } else { "" },
             );
         }
 
-        core.machine.z80.io.current_frame_step = frame_step;
+        // current_frame_step is used by flush_audio and color_events as a
+        // proportion of CYCLES_PER_FRAME.  Convert from x4 units.
+        core.machine.z80.io.current_frame_step = frame_step_x4 / 4;
         core.machine.z80.io.frame_count = core.frame_count;
         core.machine.z80.io.step_count = core.step_count;
-        core.machine.z80.step();
+        let current_inmod = core.machine.z80.io.inmod;
+        let current_inlin = core.machine.z80.io.inlin;
+        let current_infbk = core.machine.z80.io.infbk;
+        let cycles = core.machine.z80.step();
         core.step_count += 1;
+        frame_step_x4 += cycles * 4;
+
+        // DEBUG: diagnostic
+        #[cfg(feature = "debug_logging")]
+        if (current_inmod != core.machine.z80.io.inmod) || (current_inlin != core.machine.z80.io.inlin) || (current_infbk != core.machine.z80.io.infbk) {
+            debug_print!(
+                core.step_count,
+                core.frame_count,
+                frame_step_x4 / 4,
+                "» pc={:#06x}:{:12} inmod={:#04x} inlin={:#04x} infbk={:#04x} irq_enabled={:5} $4FCE={:#06x} $4FD0={:#06x} $4FD4={:#04x} $4FEA={:#04x} $4FF9={:#04x} {}{}",
+                core.machine.z80.pc,
+                disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc),
+                core.machine.z80.io.inmod,
+                core.machine.z80.io.inlin,
+                core.machine.z80.io.infbk,
+                (core.machine.z80.io.inmod & 0x08) != 0,
+                u16::from_le_bytes([
+                    core.machine.z80.io.mem[0x4FCE],
+                    core.machine.z80.io.mem[0x4FCF]
+                ]),
+                u16::from_le_bytes([
+                    core.machine.z80.io.mem[0x4FD0],
+                    core.machine.z80.io.mem[0x4FD1]
+                ]),
+                core.machine.z80.io.mem[0x4FD4],
+                core.machine.z80.io.mem[0x4FEA],
+                core.machine.z80.io.mem[0x4FF9],
+                if catch_trigger { "Trigger" } else { "" },
+                if catch_enter { "Enter" } else { "" },
+            );
+        }
+
+        // Clear a held IRQ in the same iteration it was asserted, after step().
+        // The CPU has had exactly one instruction opportunity to take it.
+        if irq_asserted {
+            core.machine.z80.clr_irq();
+            irq_asserted = false;
+        }
     }
 
     core.frame_count += 1;
