@@ -472,6 +472,40 @@ pub extern "C" fn retro_run() {
             last_irq_fire_x4 = Some(irq_fire_cycle_x4);
         }
 
+        if scanline_irq_enabled && is_new_threshold && frame_step_x4 >= irq_fire_cycle_x4 {
+            core.machine.z80.assert_irq(core.machine.z80.io.infbk);
+            irq_asserted = true;
+            last_irq_fire_x4 = Some(irq_fire_cycle_x4);
+            
+            #[cfg(feature = "debug_logging")]
+            debug_print!(
+                core.step_count,
+                core.frame_count,
+                frame_step_x4 / 4,
+                "I pc={:#06x}:{:12} inmod={:#04x} inlin={:#04x} infbk={:#04x} irq_enabled={:5} $4FCE={:#06x} $4FD0={:#06x} $4FD4={:#04x} $4FEA={:#04x} $4FF9={:#04x} scanline={} {}{}",
+                core.machine.z80.pc,
+                disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc),
+                core.machine.z80.io.inmod,
+                core.machine.z80.io.inlin,
+                core.machine.z80.io.infbk,
+                (core.machine.z80.io.inmod & 0x08) != 0,
+                u16::from_le_bytes([
+                    core.machine.z80.io.mem[0x4FCE],
+                    core.machine.z80.io.mem[0x4FCF]
+                ]),
+                u16::from_le_bytes([
+                    core.machine.z80.io.mem[0x4FD0],
+                    core.machine.z80.io.mem[0x4FD1]
+                ]),
+                core.machine.z80.io.mem[0x4FD4],
+                core.machine.z80.io.mem[0x4FEA],
+                core.machine.z80.io.mem[0x4FF9],
+                irq_physical_line,
+                if catch_trigger { "Trigger" } else { "" },
+                if catch_enter { "Enter" } else { "" },
+            );
+        }
+
         // DEBUG: Per-second state dump
         #[cfg(feature = "debug_logging")]
         if core.frame_count % 60 == 0 && frame_step_x4 == 0 {
