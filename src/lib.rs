@@ -43,6 +43,9 @@ pub static LOG_CALLBACK: Mutex<
 pub static DUMP_REQUESTED: std::sync::atomic::AtomicBool = 
     std::sync::atomic::AtomicBool::new(false);
 
+pub static MEMORY_REQUESTED: std::sync::atomic::AtomicBool = 
+    std::sync::atomic::AtomicBool::new(false);
+
 #[macro_export]
 macro_rules! retro_log {
     ($level:expr, $($arg:tt)*) => {
