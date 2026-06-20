@@ -423,6 +423,7 @@ pub extern "C" fn retro_run() {
 
     if crate::MEMORY_REQUESTED.load(std::sync::atomic::Ordering::Relaxed) {
         eprintln!("bytes at $022C0: {:02x?}", &core.machine.z80.io.mem[0x22C0..=0x22D9]);
+        eprintln!("bytes at $04F3C: {:02x?}", &core.machine.z80.io.mem[0x4F3C]);
     }
 
     // Machine
