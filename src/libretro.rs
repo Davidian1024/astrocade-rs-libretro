@@ -429,6 +429,7 @@ pub extern "C" fn retro_run() {
         eprintln!("bytes at $03440 .. $03470: {:02x?}", &core.machine.z80.io.mem[0x3440..=0x3470]);
         eprintln!("bytes at $00360 .. $00390: {:02x?}", &core.machine.z80.io.mem[0x0360..=0x0390]);
         eprintln!("byte at $04FDC: {:02x?}", &core.machine.z80.io.mem[0x4FDC]);
+        eprintln!("bytes at $034B0 .. $034D0: {:02x?}", &core.machine.z80.io.mem[0x34B0..=0x34D0]);
     }
 
     // Machine
