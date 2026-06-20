@@ -426,6 +426,7 @@ pub extern "C" fn retro_run() {
         eprintln!("byte at $04F3C: {:02x?}", &core.machine.z80.io.mem[0x4F3C]);
         eprintln!("bytes at $02AF5 .. $02B20: {:02x?}", &core.machine.z80.io.mem[0x2AF5..=0x2B20]);
         eprintln!("byte at $04F27: {:02x?}", &core.machine.z80.io.mem[0x4F27]);
+        eprintln!("bytes at $03440 .. $03470: {:02x?}", &core.machine.z80.io.mem[0x3440..=0x3470]);
     }
 
     // Machine
@@ -495,33 +496,33 @@ pub extern "C" fn retro_run() {
             irq_asserted = true;
             last_irq_fire_x4 = Some(irq_fire_cycle_x4);
             
-            // #[cfg(feature = "debug_logging")]
-            // debug_print!(
-            //     core.step_count,
-            //     core.frame_count,
-            //     frame_step_x4 / 4,
-            //     "I pc={:#06x}:{:12} inmod={:#04x} inlin={:#04x} infbk={:#04x} irq_enabled={:5} $4FCE={:#06x} $4FD0={:#06x} $4FD4={:#04x} $4FEA={:#04x} $4FF9={:#04x} scanline={:#03} {}{}",
-            //     core.machine.z80.pc,
-            //     disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc),
-            //     core.machine.z80.io.inmod,
-            //     core.machine.z80.io.inlin,
-            //     core.machine.z80.io.infbk,
-            //     (core.machine.z80.io.inmod & 0x08) != 0,
-            //     u16::from_le_bytes([
-            //         core.machine.z80.io.mem[0x4FCE],
-            //         core.machine.z80.io.mem[0x4FCF]
-            //     ]),
-            //     u16::from_le_bytes([
-            //         core.machine.z80.io.mem[0x4FD0],
-            //         core.machine.z80.io.mem[0x4FD1]
-            //     ]),
-            //     core.machine.z80.io.mem[0x4FD4],
-            //     core.machine.z80.io.mem[0x4FEA],
-            //     core.machine.z80.io.mem[0x4FF9],
-            //     irq_physical_line,
-            //     if catch_trigger { "Trigger" } else { "" },
-            //     if catch_enter { "Enter" } else { "" },
-            // );
+            #[cfg(feature = "debug_logging")]
+            debug_print!(
+                core.step_count,
+                core.frame_count,
+                frame_step_x4 / 4,
+                "I pc={:#06x}:{:12} inmod={:#04x} inlin={:#04x} infbk={:#04x} irq_enabled={:5} $4FCE={:#06x} $4FD0={:#06x} $4FD4={:#04x} $4FEA={:#04x} $4FF9={:#04x} scanline={:#03} {}{}",
+                core.machine.z80.pc,
+                disassemble_at(&core.machine.z80.io.mem, core.machine.z80.pc),
+                core.machine.z80.io.inmod,
+                core.machine.z80.io.inlin,
+                core.machine.z80.io.infbk,
+                (core.machine.z80.io.inmod & 0x08) != 0,
+                u16::from_le_bytes([
+                    core.machine.z80.io.mem[0x4FCE],
+                    core.machine.z80.io.mem[0x4FCF]
+                ]),
+                u16::from_le_bytes([
+                    core.machine.z80.io.mem[0x4FD0],
+                    core.machine.z80.io.mem[0x4FD1]
+                ]),
+                core.machine.z80.io.mem[0x4FD4],
+                core.machine.z80.io.mem[0x4FEA],
+                core.machine.z80.io.mem[0x4FF9],
+                irq_physical_line,
+                if catch_trigger { "Trigger" } else { "" },
+                if catch_enter { "Enter" } else { "" },
+            );
         }
 
         // DEBUG: Per-second state dump
@@ -564,7 +565,8 @@ pub extern "C" fn retro_run() {
         let current_inlin = core.machine.z80.io.inlin;
         let current_infbk = core.machine.z80.io.infbk;
 
-        let prev_4f27 = core.machine.z80.io.mem[0x4F27];
+let prev_4f27 = core.machine.z80.io.mem[0x4F27];
+        let prev_4f26 = core.machine.z80.io.mem[0x4F26];
         let cycles = core.machine.z80.step();
         core.step_count += 1;
         frame_step_x4 += cycles * 4;
@@ -582,8 +584,18 @@ pub extern "C" fn retro_run() {
             );
         }
 
-        core.step_count += 1;
-        frame_step_x4 += cycles * 4;
+        #[cfg(feature = "debug_logging")]
+        if core.machine.z80.io.mem[0x4F26] != prev_4f26 {
+            eprintln!(
+                "WATCH $4F26: {:02x} -> {:02x} at pc={:#06x} step={} frame={} fstep={}",
+                prev_4f26,
+                core.machine.z80.io.mem[0x4F26],
+                core.machine.z80.pc,
+                core.step_count,
+                core.frame_count,
+                frame_step_x4 / 4,
+            );
+        }
 
         // DEBUG: diagnostic
         #[cfg(feature = "debug_logging")]
