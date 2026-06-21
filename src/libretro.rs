@@ -437,6 +437,7 @@ pub extern "C" fn retro_run() {
         eprintln!("byte at $04F2E: {:02x?}", &core.machine.z80.io.mem[0x4F2E]);
         eprintln!("bytes at $03410 .. $03430: {:02x?}", &core.machine.z80.io.mem[0x3410..=0x3430]);
         eprintln!("bytes at $03430 .. $03460: {:02x?}", &core.machine.z80.io.mem[0x3430..=0x3460]);
+        eprintln!("byte at $04F32: {:02x?}", &core.machine.z80.io.mem[0x4F32]);
     }
 
     // Machine
@@ -575,6 +576,7 @@ pub extern "C" fn retro_run() {
         let current_inlin = core.machine.z80.io.inlin;
         let current_infbk = core.machine.z80.io.infbk;
 
+        let prev_4f32 = core.machine.z80.io.mem[0x4F32];
         let prev_4f27 = core.machine.z80.io.mem[0x4F27];
         let prev_4f26 = core.machine.z80.io.mem[0x4F26];
         let prev_4f2e = core.machine.z80.io.mem[0x4F2E];
@@ -642,6 +644,19 @@ pub extern "C" fn retro_run() {
                 "WATCH $4F40: {:02x} -> {:02x} at pc={:#06x} step={} frame={} fstep={}",
                 prev_4f40,
                 core.machine.z80.io.mem[0x4F40],
+                core.machine.z80.pc,
+                core.step_count,
+                core.frame_count,
+                frame_step_x4 / 4,
+            );
+        }
+
+        #[cfg(feature = "debug_logging")]
+        if core.machine.z80.io.mem[0x4F32] != prev_4f32 {
+            eprintln!(
+                "WATCH $4F32: {:02x} -> {:02x} at pc={:#06x} step={} frame={} fstep={}",
+                prev_4f32,
+                core.machine.z80.io.mem[0x4F32],
                 core.machine.z80.pc,
                 core.step_count,
                 core.frame_count,
